@@ -2,13 +2,13 @@
   "version": "v1",
   "hooks": [
     {
-      "name": "Kiroween Compliance Check on Save",
+      "name": "Kiro tracking check on ignore changes",
       "trigger": "PostFileSave",
-      "description": "Fires whenever .gitignore is saved. Checks that .kiro is not accidentally ignored, which would disqualify the Kiroween submission.",
-      "matcher": "\\.gitignore$",
+      "matcher": "(^|/)\\.gitignore$|(^|/)\\.kiro/",
+      "description": "Checks ignore rules against .kiro and existing configuration, including tracked files. Requires Git and Python 3.",
       "action": {
         "type": "command",
-        "command": "if git check-ignore -q .kiro 2>/dev/null; then echo \"FAIL: .kiro is being ignored by .gitignore — this will DISQUALIFY the Kiroween submission (Rules §4). Remove the matching rule immediately.\" >&2; exit 2; else echo \"PASS: .kiro is not ignored.\"; fi"
+        "command": "python3 - <<'PY_IGNORE'\nimport pathlib\nimport subprocess\nimport sys\ntry:\n    subprocess.run([\"git\", \"rev-parse\", \"--show-toplevel\"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n    base = pathlib.Path(\".kiro\")\n    if not base.is_dir():\n        print(\"FAIL: Project .kiro directory is missing.\", file=sys.stderr)\n        sys.exit(1)\n    paths = [str(base)] + [str(p) for p in sorted(base.rglob(\"*\")) if p.is_file()]\n    result = subprocess.run([\"git\", \"check-ignore\", \"--no-index\", \"-v\", \"--stdin\"], input=\"\\n\".join(paths) + \"\\n\", text=True, capture_output=True)\n    if result.returncode == 0:\n        print(\"REVIEW: Ignore rules match .kiro paths; inspect exclusion and re-inclusion patterns:\", file=sys.stderr)\n        print(result.stdout, file=sys.stderr, end=\"\")\n        sys.exit(1)\n    if result.returncode != 1:\n        print(\"ERROR: Git ignore check could not complete.\", file=sys.stderr)\n        sys.exit(2)\n    print(\"PASS: No ignore rules match .kiro or its existing files.\")\nexcept (OSError, subprocess.CalledProcessError):\n    print(\"ERROR: Git ignore check could not run.\", file=sys.stderr)\n    sys.exit(2)\nPY_IGNORE"
       }
     }
   ]

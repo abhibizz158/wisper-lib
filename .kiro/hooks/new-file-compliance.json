@@ -4,10 +4,10 @@
     {
       "name": "New File Compliance Reminder",
       "trigger": "PostFileCreate",
-      "description": "Checks new files for compliance issues relevant to the Kiroween rules.",
+      "description": "Checks task scope, project tracking, credentials, and dependency records when a file is created.",
       "action": {
         "type": "agent",
-        "prompt": "A new file was just created. Silently check:\n1. If the file is inside `.kiro/` — confirm it will be tracked by git (not inside a .gitignore pattern).\n2. If the file might contain a secret (name contains: key, secret, token, credential, env, config) — remind the user to use environment variable placeholders only, never literal values.\n3. If the file adds a new dependency (package.json, requirements.txt, Cargo.toml, go.mod, etc.) — remind the user to log the dependency and its license in `.kiro/steering/project-overview.md`.\nOnly speak up if one of the above applies. Stay silent otherwise."
+        "prompt": "Review the newly created file within the owner's current task. For wisper-lib, the present phase is documentation and planning; website comes before the phone app, phone AR, and VR. Check that the file serves the task rather than adding a scratch script, chat log, watermark, extra agent, or empty evidence folder. If it is inside .kiro, use Git status and check-ignore --no-index to distinguish new files awaiting staging from ignored configuration; do not stage or commit automatically. For credentials, report only paths and line numbers, never values; environment placeholders are allowed. If a real dependency was added, record its version and license in .kiro/steering/project-overview.md; proposed technology choices are not installed dependencies. Keep reports in the conversation and do not create report files. Speak only about an actual issue and avoid repeated notices for unchanged findings."
       }
     }
   ]
