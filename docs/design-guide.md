@@ -29,9 +29,9 @@ Kiro and Kiroween are a source of mood, not a borrowed product logo. This projec
 
 ### Library
 
-Every primary section opens as its own quiet console screen, with the current section in the main stage and its books, notes, chapters, or reviews in a horizontal browse rail. Use the active item's artwork or a book-like card as the visual focus. Support touch scrolling, left/right keyboard navigation, and an obvious selected state. Keep editing actions in visible controls.
+The website opens with four large room launcher buttons for Library, Notebook, Writing Desk, and Reviews. The library keeps one selected book in the hero stage with a horizontal cover rail. Use a simple dropdown for filters and alternate views so the screen has no tab bars. Book options remain reachable by a visible button and right click.
 
-Use warm glass surfaces, subtle cover reflections, an atmospheric full-screen backdrop, and short opacity/transform transitions across Library, Notebook, Writing Desk, and Reviews. Keep the intro brief and skippable, and skip motion when reduced motion is enabled. Use ambient styling as a backdrop; never make sound automatic by default.
+Use dark blue translucent surfaces, warm candle accents, material-style raised buttons, and short opacity/transform transitions. Keep the intro brief and skippable, and skip motion when reduced motion is enabled. Use ambient styling as a backdrop; never make sound automatic by default.
 
 Book whispers should be transcript-first and opt-in. The current free voice is Kokoro TTS running in the browser, lazy-loaded after Listen; its English voice is slowed and given a restrained room tone. Other languages use the device speech engine. Amazon Polly remains a separately selected, server-side option. Do not send book text to Polly unless the reader selected that provider and presses Listen.
 

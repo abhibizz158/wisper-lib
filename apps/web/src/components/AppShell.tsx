@@ -20,12 +20,13 @@ export default function AppShell() {
     return () => window.clearTimeout(timer);
   }, [booting]);
   const page = location.pathname.startsWith('/write') ? 'Writing desk' : location.pathname.startsWith('/reviews') ? 'Personal reviews' : location.pathname.startsWith('/notes') ? 'Notebook' : 'Library';
-  return <div className="app-shell console-app">
+  return <div className="app-shell">
     <a href="#main-content" className="skip-link">Skip to content</a>
     <header className="app-header"><NavLink to="/library" className="brand" aria-label="wisper-lib home"><span className="brand-mark" aria-hidden="true">w</span><span>wisper-lib<small>YOUR PERSONAL READING ROOM</small></span></NavLink>
-      <nav aria-label="Main navigation">{[['/library','Library'],['/notes','Notebook'],['/write/new','Writing desk'],['/reviews','Reviews']].map(([to,label]) => <NavLink key={to} to={to} className={({isActive}) => `nav-link ${isActive || (to === '/write/new' && location.pathname.startsWith('/write/')) ? 'is-active' : ''}`}>{label}</NavLink>)}</nav>
+      <span className="room-current">{page}</span>
       <button className="room-preferences" aria-label="Customize your reading room" onClick={() => setPreferences(true)}><span className="room-light" aria-hidden="true">✦</span><span>Set the mood</span></button>
     </header>
+    <nav className="room-launcher" aria-label="Open a room">{[['/library','▤','Library','Read and track'],['/notes','✎','Notebook','Keep a thought'],['/write/new','✦','Writing desk','Make a book'],['/reviews','★','Reviews','Share a review']].map(([to,icon,label,description]) => <NavLink key={to} to={to} className={({isActive}) => `launcher-button ${isActive || (to === '/write/new' && location.pathname.startsWith('/write/')) ? 'is-active' : ''}`}><span className="launcher-icon" aria-hidden="true">{icon}</span><span className="launcher-copy"><strong>{label}</strong><small>{description}</small></span></NavLink>)}</nav>
     <div className="sr-only" role="status" aria-live="polite">{page}</div>
     <main id="main-content" className="app-content"><div className="route-scene" key={location.pathname}><Outlet /></div></main>
     <footer className="app-footer"><span>A little quieter. A little more yours.</span><span>Personal library · Local reading room</span></footer>
