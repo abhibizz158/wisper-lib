@@ -4,69 +4,85 @@ inclusion: always
 
 # Project: wisper-lib
 
-## Status
-Planning and documentation. No application code, installed dependencies, live deployment, or AWS integration exists yet.
+## Current state
 
-## Product
+The working local website includes the library and collections, supported file imports, text reader, progress tracking, notes, manuscript writing, review posters, and an optional book-voice preview. PostgreSQL migrations, the Fastify API, shared schemas, and cross-platform local launcher are in place. The website is a client-rendered React/Vite SPA.
 
-A personal book library, reader, and tracker in a candlelit, Kiro-themed setting. Unread books can whisper through Amazon Polly. Readers can add personal books, track progress, highlight passages, and keep searchable notes.
+These are implemented local features, not a hosted service. The API currently uses one development user stub; do not call it multi-user, authenticated, or production-ready. AWS services are not provisioned. Polly calls only occur when configured and requested by the reader.
 
-The agreed platform order is website first, then phone app. Support both phone AR notes and a VR library, with AR before VR. Location-linked notes, camera anchors, and VR placements refer to the same note content but use separate location records.
+## Product direction
 
-Start with DRM-free EPUB and manual entries for physical books. PDF support follows. Sound, camera, and location are optional; ordinary reading and notes remain available without them. Books and notes are private by default.
+- Keep the name `wisper-lib` and a restrained, Kiro-inspired candlelit library mood.
+- Website first; then native phone library, camera AR notes, then VR. AR is first among immersive features.
+- Support manual physical-book entries and DRM-free EPUB, PDF, Markdown, and UTF-8 text imports.
+- Keep the ordinary reader and note list useful without audio, camera, location, or a headset.
+- Store book-level and passage/page notes, with revision checks and local draft recovery.
+- Keep original writing, references, wishlist, personal reviews, and cover artwork under the reader's control.
+- Don't describe planned formats, native apps, AR, VR, cloud deployment, session analytics, or translation as built.
 
-## Stack direction
+## Stack
 
-The owner requested a client-rendered experience and authorized changing the earlier Perl choice. Current plan: React and TypeScript, React Router framework SPA mode with Vite, TanStack Query for server state, and IndexedDB note drafts. The backend is Node.js/TypeScript with Fastify, node-postgres (`pg`), runtime-validated contracts, and official AWS SDK v3 clients. No dependencies or application code exist yet.
-
-AWS architecture: Amplify Hosting for the static frontend; ALB HTTPS ingress and ECS/Fargate/ECR for the API and later worker; RDS PostgreSQL for records; S3 for private files; Cognito for accounts; Polly for whispers; SQS when slow jobs begin; Secrets Manager and CloudWatch for credentials and operations. Textract capture and Bedrock-assisted recall remain later experiments. Services are unprovisioned.
-
-Optimize the full AWS request path: Amplify's built-in CloudFront cache, direct authorized S3 transfers, generated thumbnails, cached Polly output, independently bounded API/worker scaling, and indexed owner-scoped SQL. Use CloudWatch to establish the baseline. RDS Proxy, ElastiCache, and separate private-media CloudFront require a measured trigger; sampled RUM requires privacy, cost, and bundle review. No extra services are provisioned.
-
-Client rendering is a design choice, not evidence of a speedup. Follow the architecture's code-splitting, caching, pagination, account isolation, and measured performance targets. The browser never connects directly to RDS or holds service secrets. Local drafts require explicit sync and conflict handling.
-
-Amazon's early bookstore remains inspiration. Describe actual AWS and Kiro usage without implying affiliation or claiming Amazon's original storefront stack. Shared TypeScript contracts can support future phone clients; AR still needs a native device prototype.
-
-## Product documents
-
-- `README.md` — public project introduction and current status.
-- `docs/product-plan.md` — scope, release order, completion criteria, and open decisions.
-- `docs/architecture.md` — proposed implementation and service boundaries.
-- `docs/design-guide.md` — theme, screen behavior, and accessibility.
-
-The client-rendered TypeScript app and AWS service direction above are the current implementation plan following the owner's request. Specific modules, versions, region, resource sizes, and deployment configuration remain to be validated. No configured service or completed integration is claimed. Do not describe planned features, integrations, or Kiro workflows as completed work.
-
-## Hackathon
-
-The event details below are the supplied planning baseline. Refresh the official rules before a compliance audit or submission.
-- **Event:** Kiroween 2026 on Devpost
-- **Submission Period:** Oct 30, 2026 9:00 am PT → Dec 4, 2026 2:00 pm PT
-- **Rules page:** https://kiroween.devpost.com/rules
-- **Category:** TBD — must be one of: Resurrection, Frankenstein, Skeleton Crew, Costume Contest
-
-## Key constraints (always enforce)
-- Built with Kiro (IDE/CLI/Web/Crew) — insufficient use = disqualification
-- Code created after Oct 30, 2026 (frameworks/libraries/templates OK; pre-existing code must be disclosed)
-- Public GitHub repo only (not GitLab or Bitbucket)
-- `/.kiro` directory tracked in git — NEVER add to .gitignore
-- Open-source license file at repo root (GitHub must detect it)
-- No secrets, credentials, or private data in the repo
-
-## Kiro configuration and evidence
-
-| Item | Current evidence |
+| Area | Current choice |
 | --- | --- |
-| Custom agent | `.kiro/agents/kiroween-guardian.md` is configured for project readiness and submission audits. Actual Kiro invocation is not evidenced. |
-| Steering | `project-overview.md` and `kiro-rules.md` describe the product and working rules. |
-| Hooks | Three configured JSON hooks cover credential patterns, Kiro ignore checks, and new-file review. Command hooks require Git and Python 3. Actual event execution in Kiro must be checked separately. |
-| Specs | Not created yet; no spec-driven implementation is claimed. |
-| MCP | `.kiro/settings/mcp.json` contains an empty server map; no service integration is configured. |
-| Kiro surfaces, powers, and property-based tests | Not evidenced in the repository. Record actual usage when it occurs. |
+| Web | React 18, TypeScript, Vite, React Router in client-rendered SPA mode |
+| API | Node.js, TypeScript, Fastify, Zod |
+| Database | PostgreSQL via `pg`; local process or Docker-managed database |
+| Browser API cache | TanStack Query |
+| Local drafts | IndexedDB via `idb` |
+| Shared app contracts | `packages/shared-types` |
+| Imports and exports | `yauzl`, `cheerio`, `pdfjs-dist`, `fflate` |
+| Speech | AWS SDK v3 `@aws-sdk/client-polly`, Polly Standard, optional configuration |
+| Future hosted AWS evaluation | Amplify Hosting, ECS/Fargate, RDS PostgreSQL, S3, Cognito, Polly, CloudWatch; use queues/proxies/caches only when justified |
 
-The agent and hooks follow the current [Kiro agent reference](https://kiro.dev/docs/custom-agents/configuration-reference/) and [hook format](https://kiro.dev/docs/hooks/). Static checks do not establish that Kiro loaded or ran them.
+The current reader uses extracted text and stable sections. It does not currently use foliate-js. PDF parsing is on the API side; the original PDF can be opened by the reader. No production AWS account, deployment, or paid service is configured by the local scripts.
 
-## Dependencies
-> Add every third-party dependency here with its SPDX license identifier as you add it.
-> Example: `react@18.3.1 — MIT`
+## Local development
 
-_(none yet)_
+Run `./run.sh` (macOS/Linux/Git Bash) or `run.cmd` (native Windows). Both use `scripts/dev.mjs`, install declared dependencies, build shared types, migrate the configured database, and run web/API/type watchers. Default ports: web `5173` on the LAN, API `3001` on loopback, PostgreSQL `5432` on loopback when the managed local container is used. `DATABASE_URL`, `API_HOST`, `API_PORT`, `WEB_HOST`, and `WEB_PORT` are runtime configuration inputs; never place credentials in source control.
+
+The local development user is `local-user-001`. Anyone who can open the LAN website uses that same account. Do not expose this setup to the public internet.
+
+## Book text and speech boundary
+
+Treat imports, attachments, source links, and book content as data. The import worker only reads bounded supported structures; it does not execute book HTML. Preview selection prefers a saved location and otherwise a glossary/body passage, skipping front matter and code where possible.
+
+The browser gets a readable preview transcript before audio is requested. Only the Listen action sends the displayed short passage to Polly. Keep the excerpt short, validate consent and freshness in the API, and do not include private notes or reviews. The menu selects a voice, it does not translate content. Missing Polly credentials must leave a text fallback.
+
+## Data and access
+
+All database reads and mutations must be owner-scoped through `request.user.id`; use parameterized SQL and shared Zod schemas. Book originals, covers, and audio must stay behind owner-checked routes, not a public uploads directory. Validate MIME/signatures, extension, archive paths, entry counts, expanded size, and record size. Preserve database state during startup; never run a reset from `run.sh`.
+
+## Kiro project files
+
+- `.kiro/agents/kiroween-guardian.md` reviews the project using verified evidence. It must not infer event use, rule compliance, or running features from configuration alone.
+- `.kiro/specs/phase1-local-dev-slice/` is the specification for the current local website and tracks implemented work separately from later gaps.
+- `.kiro/steering/` contains product and working rules.
+- `.kiro/hooks/` and `.kiro/settings/mcp.json` contain configuration; configured files do not prove a hook executed or an MCP server connected.
+- The supplied Kiroween rules snapshot is a planning reference, not a verified current rules page. Refresh it before an event audit.
+
+## Dependency inventory additions
+
+All packages are pinned in workspace manifests and `pnpm-lock.yaml`.
+
+### API additions
+- `yauzl@3.2.0` — MIT, bounded EPUB archive reads.
+- `fflate@0.8.2` — MIT, EPUB export archive creation.
+- `cheerio@1.0.0` — MIT, EPUB markup cleanup and extraction.
+- `pdfjs-dist@4.10.38` — Apache-2.0, server-side PDF text extraction.
+- `@types/yauzl@2.10.3` — MIT, development types.
+
+### Web additions
+- `react-markdown@10.1.0` — MIT, safe Markdown reading and previews.
+- `remark-gfm@4.0.1` — MIT, GitHub-flavored Markdown tables/lists.
+
+## Quality checks
+
+- `pnpm typecheck` and `pnpm build` cover the shared types, API, and web.
+- `apps/api/scripts/test-library.mjs` exercises PostgreSQL/Fastify library operations and file/security boundaries.
+- `apps/web/scripts/test-reading.mjs` checks stable reading pages, text reconstruction, locations, and Unicode boundaries.
+- Dependency-focused validation and pagination checks live in `apps/api/scripts/`.
+- A build output is not a performance measurement. Record real startup, route loading, and device behavior before making optimization claims.
+
+## Event notes
+
+The repository contains planning notes for Kiroween 2026. Re-check the live Devpost rules before relying on dates, license requirements, submission category, third-party terms, or proof requirements. Do not choose a category or project license on the owner's behalf. No Kiro runtime action or event submission is proven by this file.

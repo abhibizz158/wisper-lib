@@ -1,117 +1,68 @@
 # Product plan
 
-wisper-lib should make it easy to choose a book, read it, and remember what stayed with you. Its candlelit setting and whispering shelves give the library its character. The reader and tracker need to work well before the immersive parts grow.
+wisper-lib is a personal reading room: a useful book shelf and reader first, with a quiet candlelit Kiro mood around it. It helps readers keep their books, their own writing, their progress, and the thoughts they want to find again.
 
-## Agreed direction
+## Decisions that guide the build
 
-- Keep the project name `wisper-lib`.
-- Build the website first, then the phone app.
-- Support both phone AR notes and a VR library, with AR first.
-- Build the client-rendered website with React and TypeScript, React Router SPA mode, and Vite. Use a TypeScript/Fastify API; the owner authorized replacing the earlier Perl choice.
-- Use Amplify Hosting for the frontend, RDS PostgreSQL for records, S3 for files, Cognito for accounts, and ECS/Fargate for the API and later worker.
-- Use Amazon Polly for book whispers.
-- Keep a Kiro-themed, candlelit library throughout the experience.
+- Build the client-rendered website first, then a phone app using the same API, then phone AR notes, then VR.
+- Use the existing React/TypeScript/Vite frontend, Fastify API, PostgreSQL database, and shared Zod contracts. Perl is not part of the current stack.
+- Use Amazon services where they solve a real need. Polly is optional for short book previews now; Cognito, S3, RDS, Amplify Hosting, ECS/Fargate, and CloudWatch are deployment choices, not provisioned services.
+- Let a reader use the library, write, read, track, and take ordinary notes without speech, camera, location, or a headset.
+- Keep book text, notes, and reviews private. Sending a selected short excerpt to Polly requires an explicit listening action; a language choice does not translate that text.
+- Do not describe planned format, platform, deployment, or performance support as already working.
 
-The release boundaries below are proposed planning decisions. No feature is implemented yet.
+## Website capabilities in the current build
 
-## First release: The website
+| Capability | Current behavior |
+| --- | --- |
+| Library and shelves | Add manual books, DRM-free EPUB/PDF, Markdown, or UTF-8 text. Search title/author, set tags, filter reading states and wishlist, upload PNG/JPEG/WebP covers, create and order collections, and choose grid/shelf/list/table views. |
+| Book tracking | Keep unread, reading, paused, finished, and stopped states, plus reading percentage and saved location. |
+| Reader | Read imported text in stable chapter/page sections; restore the last saved location; change type size and paper, sepia, or night theme; bookmark a page; optionally open the original PDF. EPUB layout is currently text-based. |
+| Original writing | Create a manuscript, add/reorder chapters, classify body/glossary/front matter, edit Markdown with preview/formatting controls, set a word-count goal, organize references, and export Markdown or EPUB. Recoverable editor drafts are stored in that browser. |
+| Book notes | Write a general note or attach it to a chapter/page and selected text. Search, tag, edit with revision conflict detection, and export Markdown or JSON. Recoverable note drafts are stored in that browser. |
+| Personal reviews | Draft a review from a book or note, save it privately, adjust its rating/theme/caption, render a PNG poster, and download or share through the device share sheet. The app does not post directly to social accounts. |
+| Whisper preview | Find a short passage near the last saved location, falling back to glossary/body/description. Read the transcript in the library; send that passage for Polly speech only after choosing Listen. No AWS credentials means a text-only preview. |
+| Sample editions | Add selected technical chapters from three MIT-licensed Rust books. Source links and complete MIT notices are kept with each edition. |
 
-### Client-rendered experience
+### Reading support that is not in this build
 
-Render the private library in the browser. Use client navigation, cached API results, recoverable local note drafts, and lazy-loaded reader and immersive routes. Keep ownership checks and cloud operations in the API. A small public introduction can be static or prerendered.
+MOBI/KF8, FB2, and CBZ import/rendering; original EPUB pagination; text search inside a whole imported file; highlights; session history; reading goals; and OCR are future work. The current importer accepts EPUB, PDF, Markdown, and UTF-8 text. PDFs retain a link to the original file while the accessible text reader works from extracted page text.
 
-Performance targets and device conditions are defined in the architecture. Verify production bundle size, cold and repeat loads, note typing, book opening, and large-shelf filtering before claiming improvements. The app needs JavaScript; first-load and error states must remain useful while code and data arrive.
+## Next milestones
 
-### Shelves and book details
+### Web polish and operating baseline
 
-Support manual entries for physical books as well as uploaded reading files. A manual entry should still have tracking and notes without requiring an ebook. Store a title, author, cover, description, tags, and optional ISBN. Let the owner correct imported metadata.
+Finish manual verification of add/edit/remove, covers, shelf ordering, notes, manuscript conflicts, exports, poster download, reduced motion, keyboard use, and narrow layouts. Measure cold and repeat startup, route chunks, and reader responsiveness before making performance claims. Add no infrastructure until deployment cost and account/region choices are understood.
 
-Provide grid and list views, search, collections, and filters for unread, reading, paused, finished, and did not finish. A book detail page brings together progress, sessions, notes, and the option to read or hear a whisper.
+### Native phone app
 
-### Reader
+Build on the current API and shared contracts. Add sign-in with Cognito before multi-user hosting, then offline book downloads and queued note edits. Resolve sync conflicts without silently replacing either version. Start location features with manually opened place memories; request location permission only for a reader-selected feature.
 
-Start with reflowable, DRM-free EPUB. Include a table of contents, text search, bookmarks, highlights, and passage notes. Reading controls cover font size, font choice, line spacing, content width, and paper, sepia, and dark themes.
+### Phone AR notes
 
-Save a stable location in the book so changing type size does not lose the reader's place. Treat PDF as a later format with its own page-based behavior. Fixed-layout EPUB and complex publications need compatibility work before they are advertised as supported.
+Use the camera to place a note at a recognized surface or recoverable visual anchor. Store the camera anchor separately from optional geographic coordinates. Include a normal note list and a way to recover or re-place a lost anchor. Validate with a real target phone before promising persistence.
 
-### Tracking
+### VR reading room
 
-Let readers update status and progress themselves. In the EPUB reader, record the last location and derive approximate percentage from positions in that edition. For physical books, allow page counts or a manual percentage.
+After the shared reader and phone note model are stable, prototype a small WebXR reading room with books and note cards. Support seated use, text entry, adjustable scale, and a clear exit to the ordinary reader. Do not load 3D code into the library's initial bundle.
 
-Record session dates and duration, allow corrections, and offer optional daily or yearly goals. Finishing a book records the date; rereading starts a new reading record while preserving earlier history. Pausing or stopping a book should be an ordinary action, without guilt-based messages.
+## Ideas for later
 
-### Notes
-
-Support book-level notes and passage notes with a short title, body, tags, and timestamps. Selecting a passage note should return to its source when the same edition is available. Search notes across the library and export them as Markdown or JSON.
-
-Save drafts locally if the connection drops. Show whether changes are saved, pending, or need attention. If two devices edit a note, preserve both versions for resolution.
-
-### Whispers
-
-Use short templates drawn from book metadata and reading status. An initial whisper can be an invitation to read; it does not need generated plot summaries or an additional AI service. Keep it spoiler-free and avoid speaking private notes.
-
-Ask readers to enable sound. Offer a visible transcript, replay, volume, and mute. Play one whisper at a time and keep shelves silent during reading. If Polly fails, show the text and let the reader continue.
-
-### First-release completion criteria
-
-- A reader can add a manual book and import a supported EPUB, then find both on their shelf.
-- An imported book opens, supports reader controls, and returns to the saved location after reopening.
-- A highlight and its note survive reopening and return to the correct passage.
-- Status changes, manual progress, sessions, and rereading history remain consistent.
-- Notes can be searched and exported without losing their book and passage references.
-- An unread book can play a Polly whisper after sound is enabled, with a transcript and mute control.
-- One user's books and notes cannot be accessed from another user's account.
-- The hosted release saves library records in private RDS PostgreSQL, retrieves files through authorized S3 access, and handles database reconnects without losing or duplicating updates.
-- Shelf, reader, and note flows work with keyboard navigation and on a narrow phone screen.
-- App routes open directly and survive refresh, account changes clear private caches, and reader/3D code stays out of the initial shelf bundle.
-- Initial JavaScript size and load/interaction measurements are recorded against the architecture targets; offline note recovery and revision conflicts are checked.
-- The hosted release verifies CDN asset caching, direct authorized S3 uploads with import validation, API p95 latency, database connection limits at maximum task counts, queue delay, and Polly cache reuse. Private API data must not enter shared caches.
-
-## Second release: Phone app and place memories
-
-Bring the same account, books, reader state, tracker, and notes to the phone. Provide explicit download controls for offline reading, note drafts, pending changes, and a way to resolve conflicting edits.
-
-Allow the reader to attach a place label and optional location pin to a note. Start with manually opening nearby notes. Background arrival reminders follow only after battery use, permissions, and mobile platform behavior have been validated. Let readers adjust the reminder radius, remove location data, or use a place label alone.
-
-Completion means a book and note created on the website appear on the phone; offline edits sync without silent data loss; denied location permission still leaves the notes fully usable.
-
-## Third release: Phone AR notes
-
-Open the camera from a book or note, choose a detected surface or known marker, and place a note card. Support creating, editing, moving, and deleting the card. Always provide a normal editor alongside the camera view.
-
-Prototype returning to a saved anchor on one target device before committing to persistent notes everywhere. A marker or user-assisted placement can be the first reliable approach. GPS identifies an approximate area; a spatial anchor identifies a position relative to the camera's surroundings. Store them separately.
-
-Completion means a note can be placed, saved, and found again under documented conditions. If the anchor cannot be recovered, show the note in a list and offer to place it again. Camera frames stay on the device unless a clearly explained, optional anchoring service requires otherwise.
-
-## Fourth release: VR library
-
-Build a small virtual room with shelves, a reading desk, and spatial note cards. Support opening books, creating and editing notes, moving cards, and saving room placement through the shared account. Prototype text entry and passage selection on the chosen headset before promising a full reader.
-
-Include a seated mode, adjustable scale, comfortable movement, and a way to return to a standard screen. Ship against a named device and browser support list, based on real testing. Completion includes opening and editing the same note on web, phone, and VR without losing its content.
-
-## Further experiments
-
-These are proposals after the core website is useful. They do not expand the first-release completion criteria or change the agreed phone, AR, and VR order.
-
-| Experiment | Reader experience | Smallest useful version | Completion check |
-| --- | --- | --- | --- |
-| Photo-to-note capture | Turn a photographed passage into an editable note. | A selected image, optional Textract extraction, text correction, and manual book selection. Camera integration follows on the phone. | Extracted text is editable, the source is visible, and temporary image deletion is documented. |
-| Reading recall | Revisit ideas from books already read. | Resurface saved highlights on chosen dates; optionally draft questions with Bedrock later. | Prompts link to their actual source notes and can be skipped or disabled. |
-| Note constellation | See connections between ideas across books. | User-created links and tags, a small graph, and an accessible list. | Opening any connection returns to the correct notes; no invented book passages appear. |
-
-Use the same note system for these features so an extracted passage or recall response can later be attached to a place, viewed through AR, or placed in the VR room. Keep each cloud-assisted action explicit and show what content it will send.
-
-## Decisions before implementation
-
-| Decision | Proposed starting point | When it matters |
+| Idea | A modest first version | Guardrail |
 | --- | --- | --- |
-| First mobile platform | Choose Android or iOS based on the phone available for AR development. | Before the mobile and anchor prototype. |
-| Book sources | Personal uploads, manual entries, and a small permitted demo collection. | Before importing sample books. |
-| Custom books | Treat these as personal uploaded files initially; a book-writing editor would be a separate feature. | Before finalizing the reader scope. |
-| Offline support | Website saves note drafts first; full downloaded books follow with the phone app. | Before reader storage is implemented. |
-| TypeScript and AWS compatibility | Validate the SPA build, Fastify API contracts, pg connection limits, Cognito PKCE flow, and AWS SDK v3 clients. Pin compatible versions during implementation. | Before committing to service integrations. |
-| Hosting and budget | Choose the AWS region, RDS size, availability and backup settings; estimate Amplify Hosting, ALB, ECS/Fargate, RDS, SQS, storage, networking, and service usage, with quotas and alerts. | Before creating paid infrastructure. |
-| Conditional optimization | Add RDS Proxy, ElastiCache, private-media CloudFront, or sampled RUM only against the architecture's measured triggers and privacy/cost checks. | After baseline measurements; RUM can be evaluated for the hosted pilot. |
-| License and event submission | Owner chooses a license and confirms the submission category and current event requirements. | Before a release or submission. |
+| Geographic memories | A reader-selected place label and optional coarse map point attached to an existing note. | Location permission is optional; geographic proximity is not a reliable room anchor. |
+| Photo-to-note | Capture a chosen page, extract text with an optional OCR service, and let the reader correct it. | Explain where the image and extracted text go; do not upload a photo without the reader's action. |
+| Reading recall | Resurface saved notes or highlights on a chosen schedule. | Every reminder links to the reader's own source and is easy to dismiss. |
+| Idea links | Connect notes across books and show both a visual map and an accessible list. | Links are user-created; no automatic relationship is treated as fact. |
 
-A book store, social feed, subscription billing, automatic whole-book summaries, and full-book narration can wait until the core library is useful. Optional recall questions use selected notes and do not require whole-book summaries.
+## Deployment direction
+
+For a future AWS hosted version, evaluate Amplify Hosting for static assets, ECS/Fargate for the API, RDS PostgreSQL, S3 for private books/covers, Cognito for accounts, Polly for speech, and CloudWatch for operational metrics. Prefer a simple indexed PostgreSQL query and paginated API before adding RDS Proxy or ElastiCache. Consider SQS when a real import/audio workload needs asynchronous jobs. Measure latency and concurrency, estimate regional network/storage costs, and get the owner's budget before provisioning.
+
+## Decisions still owned by the project owner
+
+- Choose the project's own open-source license before public release.
+- Choose the first AR test phone and VR headset when those milestones begin.
+- Set an AWS region, budget, and public hosting plan before creating paid cloud resources.
+- Replace the local-user stub with authentication before exposing a multi-user deployment.
+- Confirm the supported EPUB corpus and accessibility requirements before adding a full layout renderer.

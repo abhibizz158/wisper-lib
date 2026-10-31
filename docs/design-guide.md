@@ -1,73 +1,58 @@
 # Design guide
 
-The library should feel like a place to settle into a book: dark wood shelves, a small pool of candlelight, and notes on warm paper. Keep the Kiro and Kiroween character in the shelves and transitions. Reading pages need generous space and steady lighting.
+The reading room has a little candlelit mystery around it, but it should still feel like a book app. Give covers the stage, keep controls clear, and let the reader choose how much atmosphere to keep on screen.
 
-## Visual direction
+## Visual language
 
 | Element | Direction |
 | --- | --- |
-| Library background | Ink brown `#171411`, with a slightly lighter surface `#24201B`. |
-| Reading paper | Warm parchment `#F3E8D0` with dark ink `#29231D`. |
-| Dark-mode text | Warm white `#F5EAD6`; secondary text `#C7BBA8`. |
-| Candle accent | Amber `#D6AA63` for the current shelf, progress, and selected controls. |
-| Kiro accent | Muted violet `#B6A0E8` for note markers and occasional spectral details. |
-| Typography | A readable serif for reading and book titles; a plain sans serif for controls and metadata. Choose fonts and record their licenses during implementation. |
-| Surfaces | Thin borders, subtle paper grain outside reading text, and shallow shadows. |
+| Library | Deep green-black shelves, warm amber light, and a small violet accent for notes. |
+| Book surfaces | Rounded, slightly reflective cards with thin borders, restrained glass transparency, and a clear focus state. |
+| Covers | Preserve an owner's uploaded cover. When there is no cover, use a typographic cover colored by the reader's chosen book accent. |
+| Reading page | Separate the book from the darker application shell. Use generous line spacing and three paper themes: paper, sepia, and night. |
+| Writing desk | Use the same warm/dark surfaces as the library, with an easy-to-find Markdown editor, preview, citations, and word goal. |
+| Mood | Candlelight is the default. Moonlit and forest palettes and an ambient-effects switch offer quieter alternatives. No forced sound or horror imagery. |
+| Type | System sans for controls; Georgia/serif stack for book text and selected titles; monospace for code examples. |
 
-These colors are proposed project colors, not official Kiro brand specifications. Check contrast for each actual pairing, including disabled, hover, selected, and focus states. Book covers should retain their original colors.
+Kiro and Kiroween are a source of mood, not a borrowed product logo. This project does not claim to be an official Kiro/Amazon interface. Keep the seasonal touches restrained: warm light, a few spectral accents, and slow shelf transitions.
 
-Candle movement and a faint glow can appear around an unread shelf when sound is available. Avoid flickering text, jump scares, forced audio, or motion behind reading pages. Reduced-motion mode uses static lighting. A plain reading theme should be available at any time.
+## Motion, sound, and accessibility
 
-## Client-rendered behavior
+- Respect `prefers-reduced-motion`; transitions should collapse when the reader asks for less motion.
+- Ambient shelf effects can be switched off. They never run behind the reading text.
+- Preview audio is opt-in, shows its transcript, and has a volume control. Automatic preview is a separate choice.
+- Use semantic headings, labelled inputs, visible focus, keyboard-operable controls, skip navigation, and dialog Escape behavior.
+- Do not use color alone for book status, note presence, errors, or progress.
+- Check foreground/background contrast and hit areas in every palette, at narrow widths, and at browser zoom before calling the UI accessible. Do not claim WCAG conformance without an audit.
 
-Keep the shelf and reader state during navigation. Reserve space for covers, use useful loading placeholders, and show errors with retry controls. Announce route changes and restore focus deliberately for keyboard and screen-reader users. Saving feedback must distinguish pending local edits from a confirmed server save.
-
-Load immersive views when requested. The candlelit setting should not add a 3D engine or continuous animation to the ordinary reader. Keep the public introduction readable as static content while the private app loads its JavaScript.
-
-## Screens
+## Screen patterns
 
 ### Library
 
-Lead with “Continue reading,” followed by shelves and reading status filters. Keep search and “Add book” easy to find. Show book title and author as text, even when a cover is missing. On phones, use a compact shelf and an optional list view. Whisper controls belong to the book and the global sound setting.
+The library uses a collection rail and a paginated shelf. A featured book stage pairs a large cover with its metadata, status/progress, edit/read actions, and whisper transcript/player. The shelf can switch among grid, shelf, list, and table views. Keep search, reading-state filters, wishlist, sorting, and collection controls reachable without covering the books.
 
-### Book detail and reader
+An empty library points to three practical next steps: add a book, write an original one, or browse the sample editions. Sample covers and labels identify them as selected editions.
 
-The detail page shows the cover, metadata, status, progress, notes, and session history. A prominent “Read” or “Continue reading” action opens the reader. Manual books offer “Update progress” in the same position.
+### Reader
 
-The reader opens at the saved location with restrained controls for contents, search, typography, bookmarks, and notes. Selecting text reveals highlight and note actions. A side panel on larger screens becomes a sheet on phones. Exiting the reader returns to the same shelf position.
+The current reader opens text extracted from the imported edition and arranges it into stable reading sections. Keep previous/next, chapter contents, bookmark, notes, type size, and paper theme easy to find. If a PDF was imported, make the original PDF available without blocking the text reader. Do not imply that EPUB pagination or arbitrary file search is implemented yet.
 
-### Notes and tracking
+Reader controls should stay compact on a phone. Text should remain the primary surface, with a comfortable column width on larger screens and no horizontal scrolling at narrow widths.
 
-The notes view supports search, book and tag filters, and a direct route back to each source passage. Place and spatial attachments appear as small indicators, with a list view that does not need camera or location access.
+### Notes and writing
 
-Tracking shows reading history and optional goals. Use calm language for paused books, missed days, and unfinished reads. Avoid streak-loss warnings and guilt-based whispers.
+Show the book, chapter/page token, and selected excerpt beside a passage note so it can be recognized later. Preserve the text in an IndexedDB draft until a confirmed save. When the server reports a revision conflict, keep the draft visible and offer a comparison path.
 
-### Camera and VR notes
+The writing desk keeps chapter navigation, section type, Markdown writing/preview, source list, and word goal close to the editor. Reference URLs must be valid HTTP(S) links. Make it clear which manuscript version is saved to the API and which text remains a local draft.
 
-Before opening the camera, explain what placing a note does and request access. Show tracking quality, an obvious placement target, and a save confirmation. If tracking fails, keep the text in an ordinary editor and offer to place it again.
+### Review poster
 
-In VR, put shelves and note cards within comfortable reach and viewing distance. Provide seated use, adjustable text scale, a predictable exit, and a movement option that avoids forced camera motion. Validate text entry on the first target headset before designing long writing sessions.
+Keep the full review as editable text, and preview the shareable 1080 × 1350 image as a secondary view. Provide three restrained themes. Explain when poster text is shortened; retain the full review and caption. Let the reader download the PNG or open the device share sheet, but never publish a post automatically.
 
-### Capture, recall, and connected notes
+## Responsive and performance notes
 
-A capture preview should show the selected crop beside editable extracted text before saving. A recall card needs the source highlight, a place to write a response, and clear skip and disable controls. Connected notes can use a constellation view with gentle movement, with the same links available as a keyboard-accessible list. Show any model suggestion as a suggestion the reader can accept or dismiss.
-
-Keep the library character in readable typography, shelf indexes, and simple page navigation. The interface should remain responsive and usable with modern accessibility controls.
-
-## Accessibility and feedback
-
-Target WCAG 2.2 AA for the website and validate the finished screens with keyboard and assistive technology. Provide visible focus, text labels for icon controls, sufficient contrast, and controls that remain usable when text is enlarged.
-
-Whispers need transcripts, separate volume, and mute. Status must be visible through text as well as color. Camera, sound, location, and VR permissions are optional to the core library. Save states must distinguish saved, saving, offline, and conflict without making the reader guess.
-
-## Copy examples
-
-| Situation | Suggested wording |
-| --- | --- |
-| Empty shelf | “Your shelves are ready. Add your first book.” |
-| Whisper invitation | “You left a story waiting on this shelf.” |
-| Sound preference | “Let unread books whisper” |
-| Paused book | “Waiting for whenever you're ready.” |
-| Offline note | “Saved on this device. Syncing when you're back online.” |
-| Missing AR anchor | “This note is safe. Place it in the room again.” |
-| Location permission | “Use your location to find notes you've pinned nearby.” |
+- Keep the website usable at 320 px and 375 px, with narrower content flowing vertically rather than overflowing.
+- Lazy-load reader, writing, note, and review routes. Do not put PDF parsing or future 3D code in the initial library bundle.
+- Keep cover art lazy except for the featured cover and use bounded list pages.
+- Test the ambient/transparency palette in browsers with reduced transparency and reduced motion enabled.
+- The visual tokens live in `apps/web/src/styles/tokens.css`; global layouts and responsive states live in `apps/web/src/styles/global.css`, with route-specific details beside each page.

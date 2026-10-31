@@ -1,0 +1,19 @@
+{
+  "name": "wisper-lib",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "pnpm --filter @wisper-lib/shared-types build && pnpm --filter api build && pnpm --filter web build",
+    "typecheck": "pnpm --filter @wisper-lib/shared-types typecheck && pnpm --filter api typecheck && pnpm --filter web typecheck",
+    "db:migrate": "pnpm --filter api db:migrate",
+    "db:migrate:down": "pnpm --filter api db:migrate:down",
+    "db:reset": "pnpm --filter api db:reset",
+    "dev:setup": "node scripts/dev.mjs --setup-only"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.9"
+}

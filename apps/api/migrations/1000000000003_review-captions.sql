@@ -1,0 +1,1 @@
+ALTER TABLE reviews ADD COLUMN caption text NOT NULL DEFAULT '';

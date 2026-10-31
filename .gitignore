@@ -49,3 +49,9 @@ coverage/
 # Misc
 *.tmp
 *.bak
+
+# wisper-lib uploads (book files, covers, whisper audio — never commit)
+apps/api/uploads/
+
+# pnpm
+pnpm-lock.yaml.bak

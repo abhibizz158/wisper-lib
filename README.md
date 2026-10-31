@@ -1,82 +1,98 @@
 # wisper-lib
 
-### A candlelit library where your unread books whisper.
+### A candlelit reading room for the books that stay with you.
 
-wisper-lib is a personal book library, reader, and reading tracker with a quiet haunted-library feel. Keep your own books on the shelves, pick up where you stopped, and leave notes beside the passages you want to remember. The books you haven't opened can whisper a little invitation through Amazon Polly.
+wisper-lib is a personal library, reader, writing desk, and reading tracker. Browse a shelf with a quiet Kiro-inspired glow, keep your own books and covers, and leave notes beside the passages you want to remember. The atmosphere stays subtle; the reading tools stay in front.
 
-The reading experience takes inspiration from Kindle: comfortable typography, bookmarks, highlights, and a place for every book. The setting is Kiro-themed, with warm candlelight, dark shelves, parchment notes, and a restrained Kiroween mood.
+**Current build:** a client-rendered website backed by a local Fastify API and PostgreSQL. It includes book shelves and collections, original manuscript writing, EPUB/PDF/text reading, progress, page notes, book reviews with poster export, and optional short audio previews. Phone AR and VR are planned; they are not part of this web build yet.
 
-**Status: Planning.** This repository contains product documentation and existing Kiro project configuration. There is no runnable app, published demo, or connected AWS service yet. The features below describe the intended product.
+## What works today
 
-## Inside the library
-
-| Part of the library | What it should do |
+| Area | Included in this build |
 | --- | --- |
-| Your shelves | Add books manually or upload supported files. Organize them by collection, author, tags, and reading status. |
-| The reader | Read personal EPUB books, adjust type and spacing, search inside a book, use the table of contents, and save bookmarks and highlights. PDF reading follows as a separate reader. |
-| Reading tracker | Track unread, reading, paused, finished, and did-not-finish books. Record sessions, set optional goals, and see your reading history. |
-| Book notes | Write thoughts about a book or attach notes to a passage. Search, edit, tag, and export them. |
-| Whispering books | Opt in to short, spoiler-free whispers from unread books using Amazon Polly. Every whisper has visible text and a mute control. |
-| Place memories | Attach a note to a location and choose when to revisit it. All notes remain available in the regular notes view. |
-| Camera notes | Use the phone camera to create and revisit AR notes attached to a real surface or a recognized marker. |
-| The VR library | Visit a virtual reading room, arrange notes in space, and open the same books and notes used elsewhere. |
+| Library | Add a manual book, import a DRM-free EPUB or PDF, or add Markdown/UTF-8 text. Search and filter books, use custom collections, choose grid/shelf/list/table views, set a wishlist, and upload a PNG, JPEG, or WebP cover. |
+| Reader | Reflowable extracted text for EPUB and text files; extracted PDF text with an option to open the original PDF. Read by chapter/page, adjust text size and paper/sepia/night theme, bookmark, and save a reading location. |
+| Tracker | Mark books unread, reading, paused, finished, or stopped; save a percentage and last location. |
+| Notes | Keep a book note or attach a note to a reader page and selected passage. Search and tag notes, recover an in-progress draft on the same browser, and export Markdown or JSON. |
+| Writing desk | Create an original book, arrange chapters, choose body/glossary/front matter, draft in Markdown with a preview and formatting tools, track a word goal, organize citations, and export Markdown or EPUB. Local drafts can be recovered after a browser interruption. |
+| Personal reviews | Save a review with a star rating, write a caption, preview a 1080 × 1350 poster, download it as PNG, or use the device share sheet when supported. Nothing is posted automatically. |
+| Book whispers | Preview a short readable passage from the last saved location, a glossary passage, or book text. Audio is opt-in. Configure Amazon Polly Standard credentials for server-side speech; otherwise the preview remains readable text. |
+| Sample shelf | Add selected technical chapters from *The Rust Programming Language*, *The Cargo Book*, and *Rust by Example*. These are samples, not complete editions; their MIT notices and source links travel with the books. |
 
-## A visit to the library
+The supported import formats are DRM-free EPUB, PDF, Markdown, and UTF-8 text. Other ebook formats, OCR, online book discovery, phone AR, location memories, and VR are future work. An EPUB is currently read as extracted text rather than in its original page layout. PDFs retain the original file viewer as an option.
 
-Add a book to the unread shelf. When you choose to listen, it might whisper, “You left a story waiting on this shelf.” Open it, read a chapter, highlight a line, and write a note. Your place and reading progress should be saved together.
+## Product direction
 
-Later, attach that note to the place where you read it. On the phone app, a camera view can bring the note back into the room. In VR, the same note can sit beside the book on a virtual desk.
+The website comes first, followed by a shared-library phone app, phone AR notes, and a VR reading room. AR notes will be anchored through the phone camera first; VR note placement comes later. A normal list and text editor remain available even when immersive features arrive.
 
-The ordinary shelf, reader, and notes list remain the main way to use the app. Audio and immersive views are optional.
+For whispers, the website first shows a transcript selected from book text. If the reader chooses **Listen**, the API sends that short passage and the selected language/voice request to Amazon Polly. Private notes are never included. The language menu selects a voice; it does not translate the book. The web build offers English (US and UK), Spanish, French, German, Italian, Brazilian Portuguese, Hindi, and Japanese voice options. Availability depends on the configured AWS account and region.
 
-## Build order
+## Technology
 
-1. **Website:** Responsive shelves, EPUB reading, tracking, book notes, and a small Polly whisper demo.
-2. **Phone app:** The same account and library, reading on the go, offline work, and location-linked notes.
-3. **Phone AR:** Camera note creation and a reliable way to find saved notes again.
-4. **VR:** A virtual library with note creation and editing, after the shared library and note system work well.
+| Layer | Choice |
+| --- | --- |
+| Website | React 18, TypeScript, Vite, React Router in SPA mode |
+| API | Node.js, TypeScript, Fastify, Zod contracts |
+| Database | PostgreSQL through `pg`; local PostgreSQL or a Docker-managed development database |
+| Browser state | TanStack Query; IndexedDB for recoverable writing and note drafts |
+| Imports and exports | `yauzl`, `cheerio`, `pdfjs-dist`, `fflate` |
+| Speech | Optional AWS SDK for JavaScript v3 client for Amazon Polly Standard |
+| Shared contracts | `packages/shared-types` for browser and API schemas |
 
-The website and phone app should share books, progress, and notes. Camera anchoring, background location reminders, and headset features will depend on device support. The website will always offer a normal list view for spatial notes.
+There is no deployed AWS environment yet. The local build does not need AWS credentials. Before deploying, a suitable AWS path can use Amplify Hosting for the static website, ECS/Fargate for the API, RDS PostgreSQL, S3 for book files and covers, Cognito for real accounts, Polly for speech, and CloudWatch for service monitoring. Add queues, caches, or database proxies only when measured workload justifies them. Estimate account-specific costs before provisioning.
 
-## Reading and privacy
+## Run on this computer or your local network
 
-Start with personal uploads, original writing, and books made available for this use. The first reader targets DRM-free EPUB files. Kindle purchases, Amazon account syncing, and a commercial book store are outside the initial scope.
-
-Books and notes are private by default. Camera and location access should be requested when someone uses those features. The plan uses selected location pins, with no continuous location history. Whisper generation sends only the short text needed for that whisper to Polly; private notes are excluded by default.
-
-## Client-rendered app and AWS
-
-The planned website uses **React and TypeScript**, with React Router in SPA mode and Vite. Shelves, reader controls, and notes render in the browser, with navigation that preserves reading state. The API uses TypeScript and Fastify on Node.js, with shared data contracts for the future phone app. This replaces the earlier Perl backend plan.
-
-The frontend is planned for AWS Amplify Hosting. The API and background worker use ECS/Fargate with ECR, with HTTPS API ingress through an Application Load Balancer. Amazon RDS for PostgreSQL holds books, progress, and notes; S3 stores private files; Cognito handles accounts; and Polly supplies whispers. SQS is introduced with slow background jobs. Secrets Manager and CloudWatch cover credentials and operations.
-
-The performance plan uses Amplify's built-in CloudFront delivery, lazy-loaded reader and 3D modules, cached API data, paginated shelves, appropriately sized covers, and local note drafts. Authorized files transfer directly through S3; SQS keeps slow jobs out of reading requests, and cached Polly audio avoids repeated synthesis. Bounded ECS scaling and indexed RDS queries support the API. CloudWatch measurements guide tuning; RDS Proxy, ElastiCache, and a private-media CDN remain conditional additions. Full offline book downloads follow later. Client rendering alone does not guarantee faster loading; the architecture sets bundle and interaction targets to validate once an app exists.
-
-Amazon's [early online bookstore](https://press.aboutamazon.com/1995/10/worlds-largest-bookseller-opens-on-the-web) remains part of the inspiration. Hosting choices and costs will be checked before resources are created.
-
-## Later experiments
-
-- **Photo-to-note capture:** Select a page image, extract text with Amazon Textract, correct it, and attach it to a book note.
-- **Reading recall:** Revisit saved highlights through optional prompts. Later, Amazon Bedrock could help draft questions from notes the reader chooses to share with it.
-- **Connected notes:** Link ideas across books and view them as a constellation, with an ordinary searchable list alongside it.
-
-These follow the core reader and tracking work. They are planned experiments; no AWS service is connected yet.
-
-## Project documents
-
-- [Product plan](docs/product-plan.md): Features, release stages, completion criteria, and remaining decisions.
-- [Architecture](docs/architecture.md): Proposed services, shared data, Polly, syncing, and spatial notes.
-- [Design guide](docs/design-guide.md): The Kiro theme, screens, reading controls, and accessibility.
-
-## Working on the project
+Requirements: Node.js 20 or newer with npm. Docker Desktop/Engine is needed only when you do not already have a PostgreSQL database configured. Clone the repository, open its root folder, then run one of:
 
 ```bash
-git clone https://github.com/abhibizz158/wisper-lib.git
-cd wisper-lib
+./run.sh
 ```
 
-There are no installation or run commands yet because the application stack has not been implemented. The architecture document proposes a starting point; it is not a list of installed dependencies.
+On native Windows, run `run.cmd` in PowerShell or Command Prompt. Both scripts use the same Node-based launcher. The launcher bootstraps the workspace package manager into npm's cache, installs declared dependencies, builds shared contracts, applies pending database migrations, and starts the API and website. It does not reset the database.
 
-Kiro steering, hooks, and agent configuration are already tracked in [`.kiro/`](.kiro/). As implementation begins, the steering documents should follow the actual product decisions. Build evidence and service integrations should be documented as they happen.
+| Service | Default port | Use |
+| --- | ---: | --- |
+| Website | `5173` | `http://localhost:5173`; other devices on the same network can use the LAN address printed by the launcher. |
+| Fastify API | `3001` | Loopback only; the website proxies `/api/v1` requests to it. |
+| PostgreSQL | `5432` | Loopback only for the managed Docker setup, or the address in your existing `DATABASE_URL`. |
 
-The project license still needs to be chosen. A license file has not been added.
+Useful options:
+
+```bash
+./run.sh --localhost                    # keep the website on this computer
+./run.sh --web-port 5180 --api-port 3002
+./run.sh --setup-only                   # install, build shared contracts, and migrate
+./run.sh --skip-install                 # skip dependency installation on a repeat run
+./run.sh --help
+```
+
+Keep the terminal open while using the app; Ctrl+C stops the development servers. On a first run without a database URL or API `.env`, the launcher prepares a local ignored configuration and starts PostgreSQL in Docker. Existing database settings and data are retained. See [architecture](docs/architecture.md) for service boundaries and [product plan](docs/product-plan.md) for future work.
+
+### Local account and privacy
+
+The development API uses one local account stub and has no sign-in screen. Anyone who can access the website on the LAN shares that account and its books, notes, and reviews. Use a trusted network. There is no deployed URL or multi-user authentication yet.
+
+Audio starts only after an explicit listening action, unless the reader separately enables automatic previews. A short excerpt from book text can be sent to Polly when credentials are configured. Notes, AWS credentials, and database credentials stay out of browser requests. Camera, location, and VR access are not requested by this web version.
+
+### Checks
+
+```bash
+pnpm typecheck
+pnpm build
+pnpm --filter api exec tsx scripts/test-validation.mjs
+pnpm --filter api exec tsx scripts/test-pagination.mjs
+pnpm --filter api exec tsx scripts/test-library.mjs
+pnpm --filter api exec tsx ../web/scripts/test-reading.mjs
+```
+
+The API integration check uses the configured PostgreSQL database and cleans up its own test records. Do not point it at a database with important data.
+
+## Project notes
+
+- [Product plan](docs/product-plan.md) — what is implemented and what comes next.
+- [Architecture](docs/architecture.md) — routes, persistence, deployment direction, and privacy boundaries.
+- [Design guide](docs/design-guide.md) — the reading room's visual and interaction language.
+- [Kiro project steering](.kiro/steering/) — current implementation decisions and working constraints.
+
+The sample editions retain their source and MIT license notices in the imported book content and exports. The project's own license has not been selected.
