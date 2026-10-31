@@ -8,7 +8,7 @@ wisper-lib is a personal reading room: a useful book shelf and reader first, wit
 - Use the existing React/TypeScript/Vite frontend, Fastify API, PostgreSQL database, and shared Zod contracts. Perl is not part of the current stack.
 - Use Amazon services where they solve a real need. Polly is optional for short book previews now; Cognito, S3, RDS, Amplify Hosting, ECS/Fargate, and CloudWatch are deployment choices, not provisioned services.
 - Let a reader use the library, write, read, track, and take ordinary notes without speech, camera, location, or a headset.
-- Keep book text, notes, and reviews private. Sending a selected short excerpt to Polly requires an explicit listening action; a language choice does not translate that text.
+- Keep book text, notes, and reviews private. The default Kokoro voice runs locally in the browser after Listen; Polly is an explicit alternate that receives the selected short excerpt only after the user chooses it and presses Listen. A language choice does not translate that text.
 - Do not describe planned format, platform, deployment, or performance support as already working.
 
 ## Website capabilities in the current build
@@ -21,7 +21,7 @@ wisper-lib is a personal reading room: a useful book shelf and reader first, wit
 | Original writing | Create a manuscript, add/reorder chapters, classify body/glossary/front matter, edit Markdown with preview/formatting controls, set a word-count goal, organize references, and export Markdown or EPUB. Recoverable editor drafts are stored in that browser. |
 | Book notes | Write a general note or attach it to a chapter/page and selected text. Search, tag, edit with revision conflict detection, and export Markdown or JSON. Recoverable note drafts are stored in that browser. |
 | Personal reviews | Draft a review from a book or note, save it privately, adjust its rating/theme/caption, render a PNG poster, and download or share through the device share sheet. The app does not post directly to social accounts. |
-| Whisper preview | Find a short passage near the last saved location, falling back to glossary/body/description. Read the transcript in the library; send that passage for Polly speech only after choosing Listen. No AWS credentials means a text-only preview. |
+| Whisper preview | Find a short passage near the last saved location, falling back to glossary/body/description. Read the transcript in the library; load Kokoro locally after Listen by default. Other languages use the device voice; Polly is available as an explicit alternate. |
 | Sample editions | Add selected technical chapters from three MIT-licensed Rust books. Source links and complete MIT notices are kept with each edition. |
 
 ### Reading support that is not in this build

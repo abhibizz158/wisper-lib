@@ -29,7 +29,11 @@ Kiro and Kiroween are a source of mood, not a borrowed product logo. This projec
 
 ### Library
 
-The library uses a collection rail and a paginated shelf. A featured book stage pairs a large cover with its metadata, status/progress, edit/read actions, and whisper transcript/player. The shelf can switch among grid, shelf, list, and table views. Keep search, reading-state filters, wishlist, sorting, and collection controls reachable without covering the books.
+The library opens as a quiet launch screen: one selected book is in the hero stage and a horizontal, keyboard-browsable rail gives neighboring covers room to move. The cover rail supports snap scrolling on touch, left/right keys and buttons, a visible book-options action, and a right-click shortcut. Keep search, reading-state filters, wishlist, sorting, and collection controls reachable without covering the books. Grid, shelf, list, and table layouts remain available as alternate views.
+
+Use warm glass surfaces, subtle cover reflections, and short opacity/transform transitions to carry the same focus language into Notebook, Writing Desk, and Reviews. Keep the intro brief and skippable, and skip motion when reduced motion is enabled. Use ambient styling as a backdrop; never make sound automatic by default.
+
+Book whispers should be transcript-first and opt-in. The current free voice is Kokoro TTS running in the browser, lazy-loaded after Listen; its English voice is slowed and given a restrained room tone. Other languages use the device speech engine. Amazon Polly remains a separately selected, server-side option. Do not send book text to Polly unless the reader selected that provider and presses Listen.
 
 An empty library points to three practical next steps: add a book, write an original one, or browse the sample editions. Sample covers and labels identify them as selected editions.
 

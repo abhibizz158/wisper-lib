@@ -21,7 +21,7 @@ inclusion: always
 - **API:** Fastify + TypeScript + node-postgres. All routes under `/api/v1/`. Cursor pagination everywhere. Consistent `{ data, meta?, error? }` response envelope. Runtime validation with Zod.
 - **Shared types:** All TypeScript interfaces, Zod schemas, and API contract shapes live in `packages/shared-types`. Both `apps/web` and the future React Native app import from here.
 - **Book reading:** the current reader uses safely extracted text and stable chapter/page sections. Do not claim foliate-js or original EPUB pagination; PDF.js is used on the API for bounded text extraction, and the reader can open the original PDF.
-- **Whispers:** use Amazon Polly Standard when configured. Show the excerpt before listening. Only a clear, explicit Listen action may send that short passage to Polly; never send notes or reviews. A language selects a voice and does not translate the passage. If credentials are absent, keep the text-only experience.
+- **Whispers:** default to the free browser-local Kokoro voice, loaded only after Listen; use installed device speech for non-English locales. Polly Standard is an explicit alternate when configured. Show the excerpt before listening; only the Polly choice and clear Listen action may send that passage to Polly. Never send notes or reviews. A language selects a voice and does not translate the passage. If local model files are unavailable and Polly is not selected, keep the text readable and offer the device voice.
 - **Local setup:** PostgreSQL can be an existing local service or a Docker-managed dev database. `run.sh` and `run.cmd` do not provision AWS. No Cognito, S3, ECS, or production database is currently configured.
 - **Auth stub:** Phase 1 uses a hardcoded local user. Every route uses `request.user.id`. The stub is marked `// TODO(auth): replace with Cognito JWT verification`. No auth logic leaks into domain code.
 - **Mobile-first API:** The Fastify API is designed as a mobile API from day one. No cookie sessions. Bearer tokens. Idempotency keys on mutations. Pagination that works for mobile clients.
@@ -32,7 +32,7 @@ inclusion: always
 - Supported import inputs today: DRM-free EPUB, PDF, Markdown, UTF-8 text, and manual metadata. MOBI, KF8/AZW3, FB2, CBZ, full EPUB layout, and OCR are not implemented; don't advertise them as supported.
 - Use one note identity with separate place memories, AR anchors, and VR placements when the phone and immersive phases begin. GPS does not provide precise room anchoring.
 - Keep capture, recall, and connected-note experiments optional. Send only user-selected content to an external service after explicit consent.
-- Keep Polly credentials server-side, excerpt short, transcript visible, and speech optional. The selected passage is private library text sent only at the user's explicit Listen action.
+- Keep Polly credentials server-side, excerpt short, transcript visible, and speech optional. The local model downloads only after Listen and synthesizes in-browser. The selected passage is sent to AWS only if the user selects Polly and presses Listen.
 - Keep the candlelit Kiro theme consistent with `docs/design-guide.md`. Target WCAG 2.2 AA. Provide reduced motion, keyboard access, and a quiet reading mode.
 - All interactive targets ≥ 44 × 44 px (web and React Native). Bottom sheet controls for mobile. Responsive from 375 px viewport width.
 

@@ -14,6 +14,7 @@
     "@tanstack/react-query-devtools": "5.67.3",
     "@wisper-lib/shared-types": "workspace:*",
     "idb": "8.0.2",
+    "kokoro-js": "1.2.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-markdown": "10.1.0",

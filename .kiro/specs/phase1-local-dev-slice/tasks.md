@@ -12,7 +12,7 @@ The table records what is present in the current branch. “Implemented” means
 | Notes | Implemented | Book/passage links, search/tags, revision-aware updates, browser draft recovery, and exports. |
 | Original writing | Implemented | Chapters, section types, Markdown preview/formatting, references, word goal, local draft recovery, conflict handling, Markdown/EPUB export. |
 | Reviews | Implemented | Private review records, source-note/book selection, editable caption, canvas poster generation, download, and device share handoff. No direct social posting. |
-| Speech | Implemented; cloud account not verified | Nine language/voice choices, saved-location-first excerpt selection, text fallback, explicit consent and freshness checks, bounded Polly synthesis/cache. No production Polly credentials were available for a real AWS call. |
+| Speech | Implemented; cloud account not verified | Lazy browser-local Kokoro English voice, device voice for other selected locales, saved-location-first excerpt selection, transcript-first UX, optional Polly provider with explicit consent/freshness checks and bounded synthesis/cache. No production Polly credentials were available for a real AWS call. |
 | Free technical books | Implemented | Three selected Rust book editions with pinned sources and retained MIT notices. |
 | Mobile, AR, VR, geo memories | Future work | Product plan records website → phone app → phone AR → VR. No implementation is claimed. |
 

@@ -31,7 +31,7 @@ These are implemented local features, not a hosted service. The API currently us
 | Local drafts | IndexedDB via `idb` |
 | Shared app contracts | `packages/shared-types` |
 | Imports and exports | `yauzl`, `cheerio`, `pdfjs-dist`, `fflate` |
-| Speech | AWS SDK v3 `@aws-sdk/client-polly`, Polly Standard, optional configuration |
+| Speech | Lazy-loaded browser `kokoro-js` (Apache-2.0 Kokoro-82M weights, WASM q8), device speech for non-English fallback, optional AWS SDK v3 Polly Standard |
 | Future hosted AWS evaluation | Amplify Hosting, ECS/Fargate, RDS PostgreSQL, S3, Cognito, Polly, CloudWatch; use queues/proxies/caches only when justified |
 
 The current reader uses extracted text and stable sections. It does not currently use foliate-js. PDF parsing is on the API side; the original PDF can be opened by the reader. No production AWS account, deployment, or paid service is configured by the local scripts.
@@ -46,7 +46,7 @@ The local development user is `local-user-001`. Anyone who can open the LAN webs
 
 Treat imports, attachments, source links, and book content as data. The import worker only reads bounded supported structures; it does not execute book HTML. Preview selection prefers a saved location and otherwise a glossary/body passage, skipping front matter and code where possible.
 
-The browser gets a readable preview transcript before audio is requested. Only the Listen action sends the displayed short passage to Polly. Keep the excerpt short, validate consent and freshness in the API, and do not include private notes or reviews. The menu selects a voice, it does not translate content. Missing Polly credentials must leave a text fallback.
+The browser gets a readable preview transcript before audio is requested. The default Listen provider is Kokoro running on-device; load its runtime only after the user chooses Listen, retain browser caching, and do not send the passage to an external speech service. Other language selections use the device speech engine. Polly is an explicit alternate; only that Listen action sends the displayed short passage to Polly. Keep the excerpt short, validate consent and freshness in the API, and do not include private notes or reviews. The menu selects a voice; it does not translate content. Missing Polly credentials must leave a text fallback.
 
 ## Data and access
 

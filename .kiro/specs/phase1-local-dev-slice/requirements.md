@@ -58,11 +58,13 @@ This specification describes the implemented local website in the current branch
 
 1. A preview returns readable transcript text before any speech provider request.
 2. Passage selection prefers a saved reading location and may fall back to glossary, body, or description while skipping non-reading material.
-3. Only an explicit listening action may submit the visible short passage to Amazon Polly.
-4. The API validates consent and transcript freshness. Private notes and reviews are never sent to Polly.
-5. Polly uses Standard voices when configured. Missing credentials/provider access yields a useful text fallback.
-6. The language picker chooses an available voice and is not a translation service.
-7. Available UI language choices are English (US/UK), Spanish, French, German, Italian, Brazilian Portuguese, Hindi, and Japanese.
+3. The default free voice runs the Kokoro model in the browser after Listen. Model files download on first use; the selected passage stays on-device.
+4. If the selected language is outside the local English voices, use a matching installed device voice when available.
+5. Polly is an optional, explicit provider. Only its Listen action may submit the visible short passage to Amazon Polly.
+6. The API validates Polly consent and transcript freshness. Private notes and reviews are never sent to Polly.
+7. Polly uses Standard voices when configured. Missing credentials/provider access yields a useful transcript fallback.
+8. The language picker chooses an available voice and is not a translation service.
+9. Available UI language choices are English (US/UK), Spanish, French, German, Italian, Brazilian Portuguese, Hindi, and Japanese.
 
 ### R8 — Licensed samples
 

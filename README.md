@@ -16,7 +16,7 @@ wisper-lib is a personal library, reader, writing desk, and reading tracker. Bro
 | Notes | Keep a book note or attach a note to a reader page and selected passage. Search and tag notes, recover an in-progress draft on the same browser, and export Markdown or JSON. |
 | Writing desk | Create an original book, arrange chapters, choose body/glossary/front matter, draft in Markdown with a preview and formatting tools, track a word goal, organize citations, and export Markdown or EPUB. Local drafts can be recovered after a browser interruption. |
 | Personal reviews | Save a review with a star rating, write a caption, preview a 1080 × 1350 poster, download it as PNG, or use the device share sheet when supported. Nothing is posted automatically. |
-| Book whispers | Preview a short readable passage from the last saved location, a glossary passage, or book text. Audio is opt-in. Configure Amazon Polly Standard credentials for server-side speech; otherwise the preview remains readable text. |
+| Book whispers | Preview a short readable passage from the last saved location, a glossary passage, or book text. Audio is opt-in. A free Kokoro voice can run in the browser, with the device voice available for other languages. Amazon Polly remains an optional server-side provider. |
 | Sample shelf | Add selected technical chapters from *The Rust Programming Language*, *The Cargo Book*, and *Rust by Example*. These are samples, not complete editions; their MIT notices and source links travel with the books. |
 
 The supported import formats are DRM-free EPUB, PDF, Markdown, and UTF-8 text. Other ebook formats, OCR, online book discovery, phone AR, location memories, and VR are future work. An EPUB is currently read as extracted text rather than in its original page layout. PDFs retain the original file viewer as an option.
@@ -25,7 +25,7 @@ The supported import formats are DRM-free EPUB, PDF, Markdown, and UTF-8 text. O
 
 The website comes first, followed by a shared-library phone app, phone AR notes, and a VR reading room. AR notes will be anchored through the phone camera first; VR note placement comes later. A normal list and text editor remain available even when immersive features arrive.
 
-For whispers, the website first shows a transcript selected from book text. If the reader chooses **Listen**, the API sends that short passage and the selected language/voice request to Amazon Polly. Private notes are never included. The language menu selects a voice; it does not translate the book. The web build offers English (US and UK), Spanish, French, German, Italian, Brazilian Portuguese, Hindi, and Japanese voice options. Availability depends on the configured AWS account and region.
+For whispers, the website first shows a transcript selected from book text. **Free local whisper** loads the Apache-2.0 Kokoro voice model only after the reader chooses **Listen**; the model runs on-device and the browser caches downloaded model files. English uses a slower, softly filtered voice for the reading-room atmosphere. Other languages use an installed device voice. No passage text goes to a speech service in local mode. Readers can choose Amazon Polly instead; that option sends the visible short passage to the API, which uses Polly only when AWS credentials are configured. Private notes are never included. The language menu selects a voice; it does not translate the book.
 
 ## Technology
 
@@ -36,8 +36,10 @@ For whispers, the website first shows a transcript selected from book text. If t
 | Database | PostgreSQL through `pg`; local PostgreSQL or a Docker-managed development database |
 | Browser state | TanStack Query; IndexedDB for recoverable writing and note drafts |
 | Imports and exports | `yauzl`, `cheerio`, `pdfjs-dist`, `fflate` |
-| Speech | Optional AWS SDK for JavaScript v3 client for Amazon Polly Standard |
+| Speech | Browser-local Kokoro TTS (lazy loaded on Listen), device speech fallback, optional AWS SDK for JavaScript v3 client for Amazon Polly Standard |
 | Shared contracts | `packages/shared-types` for browser and API schemas |
+
+The local voice uses [`kokoro-js`](https://github.com/hexgrad/kokoro) and the [Apache-2.0 Kokoro-82M model](https://huggingface.co/hexgrad/Kokoro-82M). The browser downloads the model on first use and retains it in its own cache; model files are not checked into this repository.
 
 There is no deployed AWS environment yet. The local build does not need AWS credentials. Before deploying, a suitable AWS path can use Amplify Hosting for the static website, ECS/Fargate for the API, RDS PostgreSQL, S3 for book files and covers, Cognito for real accounts, Polly for speech, and CloudWatch for service monitoring. Add queues, caches, or database proxies only when measured workload justifies them. Estimate account-specific costs before provisioning.
 
@@ -73,7 +75,7 @@ Keep the terminal open while using the app; Ctrl+C stops the development servers
 
 The development API uses one local account stub and has no sign-in screen. Anyone who can access the website on the LAN shares that account and its books, notes, and reviews. Use a trusted network. There is no deployed URL or multi-user authentication yet.
 
-Audio starts only after an explicit listening action, unless the reader separately enables automatic previews. A short excerpt from book text can be sent to Polly when credentials are configured. Notes, AWS credentials, and database credentials stay out of browser requests. Camera, location, and VR access are not requested by this web version.
+Audio starts only after an explicit listening action, unless the reader separately enables automatic previews. Local Kokoro speech runs in the browser; choosing Polly sends the selected short excerpt to the API when AWS credentials are configured. Notes, AWS credentials, and database credentials stay out of browser requests. Camera, location, and VR access are not requested by this web version.
 
 ### Checks
 

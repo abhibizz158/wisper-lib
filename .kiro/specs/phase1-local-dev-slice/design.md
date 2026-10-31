@@ -5,13 +5,14 @@
 ```text
 Browser: React/Vite SPA :5173
   ├─ route-loaded library, reader, notes, writing desk, reviews
+  ├─ lazy browser-local Kokoro TTS after Listen (English)
   └─ /api/v1 proxy
        ↓
 Fastify API :3001 (loopback)
   ├─ Zod validation and local user pre-handler
   ├─ owner-scoped PostgreSQL queries
   ├─ bounded import workers and private local files
-  └─ optional Polly Standard request after the Listen action
+  └─ optional Polly Standard request only when selected and then listened to
        ↓
 PostgreSQL :5432 (existing local database or managed dev container)
 ```
