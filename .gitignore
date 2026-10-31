@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# KIROWEEN 2026 COMPLIANCE NOTICE
+# The /.kiro directory MUST NOT appear here.
+# Adding .kiro or its subdirectories to .gitignore will DISQUALIFY the
+# submission under Rules §4 (Repository requirements).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Environment & secrets — NEVER commit actual values
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors (not Kiro — .kiro must stay tracked)
+.vscode/
+.idea/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+__pycache__/
+*.pyc
+*.pyo
+.cache/
+
+# Dependencies — generated, not source
+node_modules/
+.pnp/
+.pnp.js
+*.egg-info/
+.venv/
+venv/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Misc
+*.tmp
+*.bak

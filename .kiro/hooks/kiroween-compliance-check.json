@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Kiroween Compliance Check on Save",
+      "trigger": "PostFileSave",
+      "description": "Fires whenever .gitignore is saved. Checks that .kiro is not accidentally ignored, which would disqualify the Kiroween submission.",
+      "matcher": "\\.gitignore$",
+      "action": {
+        "type": "command",
+        "command": "if git check-ignore -q .kiro 2>/dev/null; then echo \"FAIL: .kiro is being ignored by .gitignore — this will DISQUALIFY the Kiroween submission (Rules §4). Remove the matching rule immediately.\" >&2; exit 2; else echo \"PASS: .kiro is not ignored.\"; fi"
+      }
+    }
+  ]
+}

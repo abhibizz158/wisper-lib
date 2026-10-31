@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "New File Compliance Reminder",
+      "trigger": "PostFileCreate",
+      "description": "Checks new files for compliance issues relevant to the Kiroween rules.",
+      "action": {
+        "type": "agent",
+        "prompt": "A new file was just created. Silently check:\n1. If the file is inside `.kiro/` — confirm it will be tracked by git (not inside a .gitignore pattern).\n2. If the file might contain a secret (name contains: key, secret, token, credential, env, config) — remind the user to use environment variable placeholders only, never literal values.\n3. If the file adds a new dependency (package.json, requirements.txt, Cargo.toml, go.mod, etc.) — remind the user to log the dependency and its license in `.kiro/steering/project-overview.md`.\nOnly speak up if one of the above applies. Stay silent otherwise."
+      }
+    }
+  ]
+}
