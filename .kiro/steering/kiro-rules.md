@@ -25,9 +25,12 @@ inclusion: always
 
 ## Implementation and security
 
-- Perl is the chosen backend language. Prefer maintained releases, Mojolicious/server-rendered pages as the current proposal, and focused browser code where reading and immersive features need it. Do not silently replace the backend with Next.js or a different language.
-- Follow the AWS architecture: RDS for PostgreSQL for hosted records, S3 for private files, Polly for whispers, Cognito for accounts, ECS/Fargate with ECR for hosting, Secrets Manager for secrets, and CloudWatch for operations. Keep OCR and model services in later phases. Validate compatibility and costs before provisioning.
-- Connect Perl to RDS through Mojo::Pg/DBD::Pg and verified TLS. Keep RDS private, enforce ownership in SQL access, use bounded connections and transactions, and verify migrations and backups. Use AWS SDKs for service APIs rather than ordinary database queries.
+- Follow the current TypeScript plan: React Router SPA mode with React and Vite for client rendering, and a Node.js/Fastify API. The owner authorized replacing the earlier Perl direction. Keep API contracts shared and runtime-validated; browser types do not establish trust.
+- Use Amplify Hosting for static frontend delivery and ECS/Fargate with ECR for API/worker hosting. Keep RDS PostgreSQL, private S3 files, Cognito login, Polly, Secrets Manager, and CloudWatch in their planned roles. Add SQS with the first slow job, using durable enqueue intent and idempotent consumers. Validate compatibility and cost before provisioning.
+- Optimize AWS paths before adding services: use Amplify's existing CDN, authorized direct S3 transfers with upload finalization, cached Polly audio, and bounded API/worker scaling. Include ALB ingress and networking costs. Keep RDS Proxy, ElastiCache, and private-media CloudFront conditional on measured bottlenecks.
+- Collect CloudWatch metrics and evaluate sampled RUM only with privacy and cost controls. Keep private API data out of shared caches and exclude book/note text, location data, credentials, and signed URL query strings from telemetry. Compare measurements under matching conditions.
+- Connect the API to private RDS through node-postgres (`pg`) with verified TLS, bounded pools, ownership checks, transactions, migrations, and backups. Keep database access and privileged AWS SDK v3 operations on the backend.
+- Use lazy-loaded reader and 3D routes, account-scoped TanStack Query caches, pagination, and IndexedDB note drafts. Clear private caches on account changes and define recovery for unsynced drafts. Measure bundle size and device performance before claiming optimization; client rendering alone is not proof.
 - Keep specific framework/module versions and cloud resource configuration as proposals until validated during implementation. Record each actual dependency and its license in `project-overview.md` when added.
 - Use clear domain names and explicit validation. Document public interfaces where the behavior needs explanation.
 - Validate uploads, isolate book content, enforce ownership on every record and file request, and use parameterized database queries.

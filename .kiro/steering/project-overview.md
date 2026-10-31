@@ -17,11 +17,15 @@ Start with DRM-free EPUB and manual entries for physical books. PDF support foll
 
 ## Stack direction
 
-The owner chose Perl for the backend and prefers mature technology refined for modern use, with AWS services where useful. Proposed baseline: maintained Perl 5, Mojolicious, server-rendered HTML/CSS, focused JavaScript or TypeScript browser modules, Amazon RDS for PostgreSQL through Mojo::Pg/DBD::Pg for hosted data, local PostgreSQL for development, and a Minion worker when slow jobs are introduced. This supersedes the earlier Next.js backend proposal. No dependencies are installed yet.
+The owner requested a client-rendered experience and authorized changing the earlier Perl choice. Current plan: React and TypeScript, React Router framework SPA mode with Vite, TanStack Query for server state, and IndexedDB note drafts. The backend is Node.js/TypeScript with Fastify, node-postgres (`pg`), runtime-validated contracts, and official AWS SDK v3 clients. No dependencies or application code exist yet.
 
-The selected AWS architecture uses RDS for PostgreSQL as the primary hosted database, S3 for private files, Polly for whispers, Cognito for login, ECS/Fargate and ECR for container hosting, Secrets Manager for credentials, and CloudWatch for operations. Services remain unprovisioned; region, resource sizing, availability, backups, and cost require checks before deployment. Paws is a community SDK and needs an S3/Polly and temporary-credential prototype. Textract capture and Bedrock-assisted recall are optional later experiments. A note constellation starts with explicit links between notes.
+AWS architecture: Amplify Hosting for the static frontend; ALB HTTPS ingress and ECS/Fargate/ECR for the API and later worker; RDS PostgreSQL for records; S3 for private files; Cognito for accounts; Polly for whispers; SQS when slow jobs begin; Secrets Manager and CloudWatch for credentials and operations. Textract capture and Bedrock-assisted recall remain later experiments. Services are unprovisioned.
 
-Amazon's early bookstore is inspiration. Do not claim Perl powered its original storefront without a verified primary source, or imply Amazon affiliation. Keep the backend in Perl unless the owner changes that direction; clients share API contracts rather than Perl domain modules.
+Optimize the full AWS request path: Amplify's built-in CloudFront cache, direct authorized S3 transfers, generated thumbnails, cached Polly output, independently bounded API/worker scaling, and indexed owner-scoped SQL. Use CloudWatch to establish the baseline. RDS Proxy, ElastiCache, and separate private-media CloudFront require a measured trigger; sampled RUM requires privacy, cost, and bundle review. No extra services are provisioned.
+
+Client rendering is a design choice, not evidence of a speedup. Follow the architecture's code-splitting, caching, pagination, account isolation, and measured performance targets. The browser never connects directly to RDS or holds service secrets. Local drafts require explicit sync and conflict handling.
+
+Amazon's early bookstore remains inspiration. Describe actual AWS and Kiro usage without implying affiliation or claiming Amazon's original storefront stack. Shared TypeScript contracts can support future phone clients; AR still needs a native device prototype.
 
 ## Product documents
 
@@ -30,7 +34,7 @@ Amazon's early bookstore is inspiration. Do not claim Perl powered its original 
 - `docs/architecture.md` — proposed implementation and service boundaries.
 - `docs/design-guide.md` — theme, screen behavior, and accessibility.
 
-Perl and the AWS service direction above are the implementation plan following the owner's request. Specific modules, versions, region, resource sizes, and deployment configuration remain to be validated. No configured service or completed integration is claimed. Do not describe planned features, integrations, or Kiro workflows as completed work.
+The client-rendered TypeScript app and AWS service direction above are the current implementation plan following the owner's request. Specific modules, versions, region, resource sizes, and deployment configuration remain to be validated. No configured service or completed integration is claimed. Do not describe planned features, integrations, or Kiro workflows as completed work.
 
 ## Hackathon
 

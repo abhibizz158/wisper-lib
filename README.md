@@ -44,13 +44,15 @@ Start with personal uploads, original writing, and books made available for this
 
 Books and notes are private by default. Camera and location access should be requested when someone uses those features. The plan uses selected location pins, with no continuous location history. Whisper generation sends only the short text needed for that whisper to Polly; private notes are excluded by default.
 
-## Perl and AWS
+## Client-rendered app and AWS
 
-The backend will use **Perl 5**, with Mojolicious proposed for the web application and API. The website starts with server-rendered HTML, CSS, and focused browser code for reading. Amazon RDS for PostgreSQL is the selected hosted database for books, progress, and notes; local development uses PostgreSQL. This gives the project a practical way to bring mature web technology into a modern reading experience.
+The planned website uses **React and TypeScript**, with React Router in SPA mode and Vite. Shelves, reader controls, and notes render in the browser, with navigation that preserves reading state. The API uses TypeScript and Fastify on Node.js, with shared data contracts for the future phone app. This replaces the earlier Perl backend plan.
 
-The planned AWS stack uses RDS for PostgreSQL for library data, S3 for private files, Polly for whispers, Cognito for accounts, and ECS/Fargate with ECR for the Perl application. Secrets Manager holds service secrets; CloudWatch provides operational logs and metrics. Hosting sizes and costs will be checked before resources are created. Phone AR and browser VR will use the same API while keeping their device-specific interfaces.
+The frontend is planned for AWS Amplify Hosting. The API and background worker use ECS/Fargate with ECR, with HTTPS API ingress through an Application Load Balancer. Amazon RDS for PostgreSQL holds books, progress, and notes; S3 stores private files; Cognito handles accounts; and Polly supplies whispers. SQS is introduced with slow background jobs. Secrets Manager and CloudWatch cover credentials and operations.
 
-Amazon's [early online bookstore](https://press.aboutamazon.com/1995/10/worlds-largest-bookseller-opens-on-the-web) is part of the inspiration. AWS has also published [guidance for Perl developers](https://aws.amazon.com/blogs/developer/hello-perl-developers/). The project does not claim to recreate Amazon's original technology stack.
+The performance plan uses Amplify's built-in CloudFront delivery, lazy-loaded reader and 3D modules, cached API data, paginated shelves, appropriately sized covers, and local note drafts. Authorized files transfer directly through S3; SQS keeps slow jobs out of reading requests, and cached Polly audio avoids repeated synthesis. Bounded ECS scaling and indexed RDS queries support the API. CloudWatch measurements guide tuning; RDS Proxy, ElastiCache, and a private-media CDN remain conditional additions. Full offline book downloads follow later. Client rendering alone does not guarantee faster loading; the architecture sets bundle and interaction targets to validate once an app exists.
+
+Amazon's [early online bookstore](https://press.aboutamazon.com/1995/10/worlds-largest-bookseller-opens-on-the-web) remains part of the inspiration. Hosting choices and costs will be checked before resources are created.
 
 ## Later experiments
 

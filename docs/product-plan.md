@@ -7,14 +7,20 @@ wisper-lib should make it easy to choose a book, read it, and remember what stay
 - Keep the project name `wisper-lib`.
 - Build the website first, then the phone app.
 - Support both phone AR notes and a VR library, with AR first.
-- Use Perl for the backend, refine mature web technology where it fits, and prefer AWS services for clear product needs.
-- Use Amazon RDS for PostgreSQL as the primary hosted database, with S3 for files, Cognito for accounts, and ECS/Fargate for the hosted Perl application.
+- Build the client-rendered website with React and TypeScript, React Router SPA mode, and Vite. Use a TypeScript/Fastify API; the owner authorized replacing the earlier Perl choice.
+- Use Amplify Hosting for the frontend, RDS PostgreSQL for records, S3 for files, Cognito for accounts, and ECS/Fargate for the API and later worker.
 - Use Amazon Polly for book whispers.
 - Keep a Kiro-themed, candlelit library throughout the experience.
 
 The release boundaries below are proposed planning decisions. No feature is implemented yet.
 
 ## First release: The website
+
+### Client-rendered experience
+
+Render the private library in the browser. Use client navigation, cached API results, recoverable local note drafts, and lazy-loaded reader and immersive routes. Keep ownership checks and cloud operations in the API. A small public introduction can be static or prerendered.
+
+Performance targets and device conditions are defined in the architecture. Verify production bundle size, cold and repeat loads, note typing, book opening, and large-shelf filtering before claiming improvements. The app needs JavaScript; first-load and error states must remain useful while code and data arrive.
 
 ### Shelves and book details
 
@@ -57,6 +63,9 @@ Ask readers to enable sound. Offer a visible transcript, replay, volume, and mut
 - One user's books and notes cannot be accessed from another user's account.
 - The hosted release saves library records in private RDS PostgreSQL, retrieves files through authorized S3 access, and handles database reconnects without losing or duplicating updates.
 - Shelf, reader, and note flows work with keyboard navigation and on a narrow phone screen.
+- App routes open directly and survive refresh, account changes clear private caches, and reader/3D code stays out of the initial shelf bundle.
+- Initial JavaScript size and load/interaction measurements are recorded against the architecture targets; offline note recovery and revision conflicts are checked.
+- The hosted release verifies CDN asset caching, direct authorized S3 uploads with import validation, API p95 latency, database connection limits at maximum task counts, queue delay, and Polly cache reuse. Private API data must not enter shared caches.
 
 ## Second release: Phone app and place memories
 
@@ -100,8 +109,9 @@ Use the same note system for these features so an extracted passage or recall re
 | Book sources | Personal uploads, manual entries, and a small permitted demo collection. | Before importing sample books. |
 | Custom books | Treat these as personal uploaded files initially; a book-writing editor would be a separate feature. | Before finalizing the reader scope. |
 | Offline support | Website saves note drafts first; full downloaded books follow with the phone app. | Before reader storage is implemented. |
-| Perl and AWS compatibility | Validate Mojo::Pg/DBD::Pg against RDS PostgreSQL, Cognito sign-in, and a Paws adapter for S3 and Polly. Framework and module choices remain proposals until that check. | Before committing to service integrations. |
-| Hosting and budget | Choose the AWS region, RDS size, availability and backup settings; estimate ECS/Fargate, RDS, storage, and service usage, with quotas and alerts. | Before creating paid infrastructure. |
+| TypeScript and AWS compatibility | Validate the SPA build, Fastify API contracts, pg connection limits, Cognito PKCE flow, and AWS SDK v3 clients. Pin compatible versions during implementation. | Before committing to service integrations. |
+| Hosting and budget | Choose the AWS region, RDS size, availability and backup settings; estimate Amplify Hosting, ALB, ECS/Fargate, RDS, SQS, storage, networking, and service usage, with quotas and alerts. | Before creating paid infrastructure. |
+| Conditional optimization | Add RDS Proxy, ElastiCache, private-media CloudFront, or sampled RUM only against the architecture's measured triggers and privacy/cost checks. | After baseline measurements; RUM can be evaluated for the hosted pilot. |
 | License and event submission | Owner chooses a license and confirms the submission category and current event requirements. | Before a release or submission. |
 
 A book store, social feed, subscription billing, automatic whole-book summaries, and full-book narration can wait until the core library is useful. Optional recall questions use selected notes and do not require whole-book summaries.

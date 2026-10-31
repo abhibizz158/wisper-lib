@@ -18,6 +18,12 @@ These colors are proposed project colors, not official Kiro brand specifications
 
 Candle movement and a faint glow can appear around an unread shelf when sound is available. Avoid flickering text, jump scares, forced audio, or motion behind reading pages. Reduced-motion mode uses static lighting. A plain reading theme should be available at any time.
 
+## Client-rendered behavior
+
+Keep the shelf and reader state during navigation. Reserve space for covers, use useful loading placeholders, and show errors with retry controls. Announce route changes and restore focus deliberately for keyboard and screen-reader users. Saving feedback must distinguish pending local edits from a confirmed server save.
+
+Load immersive views when requested. The candlelit setting should not add a 3D engine or continuous animation to the ordinary reader. Keep the public introduction readable as static content while the private app loads its JavaScript.
+
 ## Screens
 
 ### Library
@@ -46,7 +52,7 @@ In VR, put shelves and note cards within comfortable reach and viewing distance.
 
 A capture preview should show the selected crop beside editable extracted text before saving. A recall card needs the source highlight, a place to write a response, and clear skip and disable controls. Connected notes can use a constellation view with gentle movement, with the same links available as a keyboard-accessible list. Show any model suggestion as a suggestion the reader can accept or dismiss.
 
-Keep the older-technology influence in readable typography, shelf indexes, and simple page navigation. The interface should remain responsive and usable with modern accessibility controls.
+Keep the library character in readable typography, shelf indexes, and simple page navigation. The interface should remain responsive and usable with modern accessibility controls.
 
 ## Accessibility and feedback
 
