@@ -29,9 +29,9 @@ Kiro and Kiroween are a source of mood, not a borrowed product logo. This projec
 
 ### Library
 
-The library opens as a quiet launch screen: one selected book is in the hero stage and a horizontal, keyboard-browsable rail gives neighboring covers room to move. The cover rail supports snap scrolling on touch, left/right keys and buttons, a visible book-options action, and a right-click shortcut. Keep search, reading-state filters, wishlist, sorting, and collection controls reachable without covering the books. Grid, shelf, list, and table layouts remain available as alternate views.
+Every primary section opens as its own quiet console screen, with the current section in the main stage and its books, notes, chapters, or reviews in a horizontal browse rail. Use the active item's artwork or a book-like card as the visual focus. Support touch scrolling, left/right keyboard navigation, and an obvious selected state. Keep editing actions in visible controls.
 
-Use warm glass surfaces, subtle cover reflections, and short opacity/transform transitions to carry the same focus language into Notebook, Writing Desk, and Reviews. Keep the intro brief and skippable, and skip motion when reduced motion is enabled. Use ambient styling as a backdrop; never make sound automatic by default.
+Use warm glass surfaces, subtle cover reflections, an atmospheric full-screen backdrop, and short opacity/transform transitions across Library, Notebook, Writing Desk, and Reviews. Keep the intro brief and skippable, and skip motion when reduced motion is enabled. Use ambient styling as a backdrop; never make sound automatic by default.
 
 Book whispers should be transcript-first and opt-in. The current free voice is Kokoro TTS running in the browser, lazy-loaded after Listen; its English voice is slowed and given a restrained room tone. Other languages use the device speech engine. Amazon Polly remains a separately selected, server-side option. Do not send book text to Polly unless the reader selected that provider and presses Listen.
 

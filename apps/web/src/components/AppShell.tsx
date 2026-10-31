@@ -20,7 +20,7 @@ export default function AppShell() {
     return () => window.clearTimeout(timer);
   }, [booting]);
   const page = location.pathname.startsWith('/write') ? 'Writing desk' : location.pathname.startsWith('/reviews') ? 'Personal reviews' : location.pathname.startsWith('/notes') ? 'Notebook' : 'Library';
-  return <div className="app-shell">
+  return <div className="app-shell console-app">
     <a href="#main-content" className="skip-link">Skip to content</a>
     <header className="app-header"><NavLink to="/library" className="brand" aria-label="wisper-lib home"><span className="brand-mark" aria-hidden="true">w</span><span>wisper-lib<small>YOUR PERSONAL READING ROOM</small></span></NavLink>
       <nav aria-label="Main navigation">{[['/library','Library'],['/notes','Notebook'],['/write/new','Writing desk'],['/reviews','Reviews']].map(([to,label]) => <NavLink key={to} to={to} className={({isActive}) => `nav-link ${isActive || (to === '/write/new' && location.pathname.startsWith('/write/')) ? 'is-active' : ''}`}>{label}</NavLink>)}</nav>
