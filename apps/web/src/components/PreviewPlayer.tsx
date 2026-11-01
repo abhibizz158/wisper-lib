@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookContent, LibraryBook, WhisperPreview } from '@wisper-lib/shared-types';
-import ortWasmModuleUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs?url';
-import ortWasmUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm?url';
+import ortWasmModuleUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs?url';
+import ortWasmUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm?url';
 import { api } from '@/lib/apiClient';
 
 type Envelope<T> = { data: T };
@@ -11,6 +11,7 @@ type VoiceGender = 'female' | 'male';
 type ReadingMode = 'preview' | 'book';
 type VoiceEngine = 'neural' | 'device';
 type KokoroModel = import('kokoro-js').KokoroTTS;
+type KokoroAudio = Awaited<ReturnType<KokoroModel['generate']>>;
 
 const KOKORO_MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 let kokoroPromise: Promise<KokoroModel> | null = null;
@@ -19,10 +20,27 @@ let kokoroProgress = 0;
 const kokoroProgressListeners = new Set<(progress: number) => void>();
 let sharedAudioContext: AudioContext | null = null;
 const roomImpulseCache = new WeakMap<AudioContext, AudioBuffer>();
+let previewWarmup: { key: string; audio: Promise<KokoroAudio> } | null = null;
+
+function voiceCacheKey(text: string, gender: VoiceGender, pace: number) {
+  return `${gender}:${pace}:${text}`;
+}
+
+function canWarmVoiceInBackground() {
+  if (typeof navigator === 'undefined') return false;
+  const device = navigator as Navigator & {
+    deviceMemory?: number;
+    connection?: { saveData?: boolean; effectiveType?: string };
+  };
+  const memory = device.deviceMemory ?? 4;
+  const cores = navigator.hardwareConcurrency || 2;
+  const connection = device.connection;
+  return memory >= 4 && cores >= 6 && !connection?.saveData && !/^(slow-)?2g$/i.test(connection?.effectiveType || '');
+}
 
 function loadKokoro(onProgress: (progress: number) => void): Promise<KokoroModel> {
   kokoroProgressListeners.add(onProgress);
-  onProgress(kokoroLoaded ? 100 : kokoroProgress);
+  if (!kokoroLoaded) onProgress(kokoroProgress);
   if (!kokoroPromise) {
     kokoroProgress = 0;
     kokoroPromise = import('kokoro-js').then(({ KokoroTTS, env }) => {
@@ -168,6 +186,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const [fullBookRequest, setFullBookRequest] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generation = useRef(0);
+  const readingRequested = useRef(false);
   const playbackLines = useRef<ReadLine[]>([]);
   const readingMode = useRef<ReadingMode>('preview');
   const nextLine = useRef<(index: number, token: number) => void>(() => {});
@@ -205,6 +224,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
 
   const stop = useCallback(() => {
     generation.current += 1;
+    readingRequested.current = false;
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -228,13 +248,19 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
       void (async () => {
         try {
           setMessage('Waking the local voice…');
-          setModelProgress(progress => progress ?? 0);
+          if (!kokoroLoaded) setModelProgress(progress => progress ?? 0);
           const tts = await loadKokoro(progress => {
             if (generation.current === token) setModelProgress(progress);
           });
           if (generation.current !== token) return;
-          const audio = await tts.generate(line.text, { voice: gender === 'female' ? 'af_heart' : 'am_onyx', speed: pace });
+          const voice = gender === 'female' ? 'af_heart' : 'am_onyx';
+          const key = voiceCacheKey(line.text, gender, pace);
+          const warmedAudio = previewWarmup?.key === key ? previewWarmup.audio : null;
+          const audio = warmedAudio
+            ? await warmedAudio
+            : await tts.generate(line.text, { voice, speed: pace });
           if (generation.current !== token) return;
+          if (previewWarmup?.key === key) previewWarmup = null;
           const context = audioContextRef.current || sharedAudioContext || new AudioContext();
           sharedAudioContext = context;
           audioContextRef.current = context;
@@ -371,6 +397,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const startLines = useCallback((lines: ReadLine[], nextMode: ReadingMode) => {
     if (!lines.length) { setMessage('There is no readable text available for this book.'); return; }
     stop();
+    readingRequested.current = true;
     const token = generation.current;
     playbackLines.current = lines;
     readingMode.current = nextMode;
@@ -428,6 +455,47 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   useEffect(() => {
     if (engine === 'neural' && language !== 'en-US') setLanguage('en-US');
   }, [engine, language]);
+
+  useEffect(() => {
+    if (!automatic || engine !== 'neural' || !previewLines.length || !canWarmVoiceInBackground()) return;
+    const firstLine = previewLines[0].text;
+    const voice = gender === 'female' ? 'af_heart' : 'am_onyx';
+    const key = voiceCacheKey(firstLine, gender, pace);
+    let cancelled = false;
+    const warm = () => {
+      if (cancelled || readingRequested.current || previewWarmup?.key === key) return;
+      setMessage('Preparing a quiet preview…');
+      setModelProgress(0);
+      const audio = loadKokoro(progress => {
+        if (!cancelled) setModelProgress(progress);
+      })
+        .then(tts => tts.generate(firstLine, { voice, speed: pace }))
+        .then(generated => {
+          if (!cancelled) setModelProgress(null);
+          return generated;
+        });
+      previewWarmup = { key, audio };
+      void audio.catch(() => {
+        if (previewWarmup?.key === key) previewWarmup = null;
+        if (!cancelled) setModelProgress(null);
+      });
+    };
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    let idleId: number | undefined;
+    const timeoutId = window.setTimeout(() => {
+      if (idleWindow.requestIdleCallback) idleId = idleWindow.requestIdleCallback(warm, { timeout: 700 });
+      else warm();
+    }, 500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+      if (idleId !== undefined) idleWindow.cancelIdleCallback?.(idleId);
+      if (previewWarmup?.key === key) previewWarmup = null;
+    };
+  }, [automatic, book.id, engine, gender, pace, previewLines]);
 
   useEffect(() => stop, [stop]);
 
