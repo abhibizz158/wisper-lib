@@ -18,6 +18,7 @@ let kokoroLoaded = false;
 let kokoroProgress = 0;
 const kokoroProgressListeners = new Set<(progress: number) => void>();
 let sharedAudioContext: AudioContext | null = null;
+const roomImpulseCache = new WeakMap<AudioContext, AudioBuffer>();
 
 function loadKokoro(onProgress: (progress: number) => void): Promise<KokoroModel> {
   kokoroProgressListeners.add(onProgress);
@@ -74,7 +75,7 @@ function preferredVoice(voices: SpeechSynthesisVoice[], language: string, gender
   return genderMatches(matchingLanguage) || genderMatches(matchingFamily) || matchingLanguage[0] || matchingFamily[0] || voices[0];
 }
 
-function toReadLines(text: string, chapter: string, wordLimit = 11): ReadLine[] {
+function toReadLines(text: string, chapter: string, wordLimit = 22): ReadLine[] {
   const readable = text
     .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, ' ')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
@@ -87,14 +88,42 @@ function toReadLines(text: string, chapter: string, wordLimit = 11): ReadLine[] 
   if (!readable) return [];
   const sentences = readable.split(/(?<=[.!?。！？])\s+/u);
   const lines: ReadLine[] = [];
+  let phrase = '';
   for (const sentence of sentences) {
-    const words = sentence.trim().split(/\s+/).filter(Boolean);
+    const cleanSentence = sentence.trim();
+    if (!cleanSentence) continue;
+    const words = cleanSentence.split(/\s+/).filter(Boolean);
+    if (words.length <= wordLimit) {
+      if (phrase && phrase.split(/\s+/).length + words.length <= wordLimit) phrase += ` ${cleanSentence}`;
+      else {
+        if (phrase) lines.push({ text: phrase, chapter });
+        phrase = cleanSentence;
+      }
+      continue;
+    }
+    if (phrase) { lines.push({ text: phrase, chapter }); phrase = ''; }
     for (let index = 0; index < words.length; index += wordLimit) {
       const line = words.slice(index, index + wordLimit).join(' ');
       if (line) lines.push({ text: line, chapter });
     }
   }
+  if (phrase) lines.push({ text: phrase, chapter });
   return lines;
+}
+
+function roomImpulse(context: AudioContext) {
+  const cached = roomImpulseCache.get(context);
+  if (cached) return cached;
+  const sampleRate = context.sampleRate;
+  const duration = 0.42;
+  const impulse = context.createBuffer(1, Math.ceil(sampleRate * duration), sampleRate);
+  const samples = impulse.getChannelData(0);
+  for (let index = 0; index < samples.length; index += 1) {
+    const progress = index / samples.length;
+    samples[index] = (Math.random() * 2 - 1) * Math.pow(1 - progress, 5) * 0.32;
+  }
+  roomImpulseCache.set(context, impulse);
+  return impulse;
 }
 
 function bookReadLines(content: BookContent): ReadLine[] {
@@ -282,12 +311,39 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     const context = audioContextRef.current;
     if (!context) return;
     const source = context.createBufferSource();
-    const gain = context.createGain();
+    const highPass = context.createBiquadFilter();
+    highPass.type = 'highpass';
+    highPass.frequency.value = 82;
+    highPass.Q.value = 0.55;
+    const warmth = context.createBiquadFilter();
+    warmth.type = 'peaking';
+    warmth.frequency.value = 245;
+    warmth.Q.value = 0.72;
+    warmth.gain.value = 1.1;
+    const softness = context.createBiquadFilter();
+    softness.type = 'lowpass';
+    softness.frequency.value = 7600;
+    softness.Q.value = 0.55;
+    const dry = context.createGain();
+    dry.gain.value = volume * 0.94;
+    const room = context.createConvolver();
+    room.buffer = roomImpulse(context);
+    const wet = context.createGain();
+    wet.gain.value = volume * 0.085;
+    const output = context.createGain();
+    output.gain.value = 0.92;
     source.buffer = buffer;
     source.playbackRate.value = pitch;
-    gain.gain.value = volume;
-    source.connect(gain);
-    gain.connect(context.destination);
+    source.detune.value = [-1.4, 0.8, 1.6, -0.6][index % 4];
+    source.connect(highPass);
+    highPass.connect(warmth);
+    warmth.connect(softness);
+    softness.connect(dry);
+    dry.connect(output);
+    softness.connect(room);
+    room.connect(wet);
+    wet.connect(output);
+    output.connect(context.destination);
     sourceRef.current = source;
     playbackOffset.current = offset;
     playbackStartedAt.current = context.currentTime;
@@ -303,7 +359,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
         setMessage(readingMode.current === 'book' ? 'You’ve reached the end of this book.' : 'That was the preview.');
         return;
       }
-      const pause = /[.!?。！？]$/.test(lines[index].text) ? 300 : 165;
+      const pause = /[.!?。！？]$/.test(lines[index].text) ? 270 : 135;
       timer.current = setTimeout(() => nextLine.current(index + 1, token), pause);
     };
     setPlaying(true);
