@@ -47,10 +47,12 @@ const WHISPER_STYLES: Record<Exclude<WhisperStyle, 'custom'>, { label: string; p
   clear: { label: 'Clear reading', pace: 0.92, depth: 1, ambience: 0.12 },
 };
 
-function piperBufferTargetSeconds() {
+function voiceBufferTargetSeconds() {
   const device = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
   const cores = navigator.hardwareConcurrency || 2;
-  return (device.deviceMemory ?? 4) <= 2 || cores <= 4 || device.connection?.saveData ? 10 : 16;
+  const memory = device.deviceMemory ?? 4;
+  if (memory <= 2 || cores <= 4 || device.connection?.saveData) return 10;
+  return memory >= 8 && cores >= 8 ? 20 : 16;
 }
 
 function estimatedSpeechSeconds(text: string, playbackRate: number) {
@@ -336,20 +338,63 @@ function preferredVoice(voices: SpeechSynthesisVoice[], language: string, gender
   return genderMatches(matchingLanguage) || genderMatches(matchingFamily) || matchingLanguage[0] || matchingFamily[0] || voices[0];
 }
 
-function toReadLines(text: string, chapter: string, wordLimit = 22): ReadLine[] {
-  const readable = text
+function spokenText(text: string) {
+  return text
+    .normalize('NFC')
+    .replace(/\r\n?/g, '\n')
     .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, ' ')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')
     .replace(/<[^>]*>/g, ' ')
+    .replace(/^\s*(?:page\s+)?\d{1,4}\s*$/gim, ' ')
+    .replace(/&(?:amp|#38);/gi, ' and ')
+    .replace(/&(?:nbsp|#160);/gi, ' ')
+    .replace(/&(?:quot|#34);/gi, '"')
+    .replace(/&(?:apos|#39);/gi, "'")
+    .replace(/&lt;/gi, ' less than ')
+    .replace(/&gt;/gi, ' greater than ')
+    .replace(/[•▪●◆]/g, '. ')
+    .replace(/[—–]/g, ', ')
     .replace(/[*_`>#]/g, '')
+    .replace(/\s+([,.;:!?])/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function toReadLines(text: string, chapter: string, wordLimit = 32): ReadLine[] {
+  const readable = spokenText(text);
   if (!readable) return [];
-  const sentences = readable.split(/(?<=[.!?。！？])\s+/u);
+  const Segmenter = (Intl as typeof Intl & {
+    Segmenter?: new (locale?: string | string[], options?: { granularity: 'sentence' }) => { segment: (value: string) => Iterable<{ segment: string }> };
+  }).Segmenter;
+  const sentences = Segmenter
+    ? Array.from(new Segmenter(undefined, { granularity: 'sentence' }).segment(readable), part => part.segment)
+    : readable.split(/(?<=[.!?。！？])\s+/u);
   const lines: ReadLine[] = [];
   let phrase = '';
+  const splitLongSentence = (sentence: string) => {
+    const chunks: string[] = [];
+    const clauses = sentence.split(/(?<=[,;:])\s+/u);
+    let chunk = '';
+    for (const clause of clauses) {
+      const words = clause.split(/\s+/).filter(Boolean);
+      if (words.length > wordLimit) {
+        if (chunk) chunks.push(chunk);
+        chunk = '';
+        for (let index = 0; index < words.length; index += wordLimit) {
+          chunks.push(words.slice(index, index + wordLimit).join(' '));
+        }
+        continue;
+      }
+      if (chunk && chunk.split(/\s+/).length + words.length > wordLimit) {
+        chunks.push(chunk);
+        chunk = clause;
+      } else chunk = chunk ? `${chunk} ${clause}` : clause;
+    }
+    if (chunk) chunks.push(chunk);
+    return chunks;
+  };
   for (const sentence of sentences) {
     const cleanSentence = sentence.trim();
     if (!cleanSentence) continue;
@@ -363,10 +408,7 @@ function toReadLines(text: string, chapter: string, wordLimit = 22): ReadLine[] 
       continue;
     }
     if (phrase) { lines.push({ text: phrase, chapter }); phrase = ''; }
-    for (let index = 0; index < words.length; index += wordLimit) {
-      const line = words.slice(index, index + wordLimit).join(' ');
-      if (line) lines.push({ text: line, chapter });
-    }
+    for (const line of splitLongSentence(cleanSentence)) if (line) lines.push({ text: line, chapter });
   }
   if (phrase) lines.push({ text: phrase, chapter });
   return lines;
@@ -463,8 +505,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generation = useRef(0);
   const readingRequested = useRef(false);
-  const preparedAudioRef = useRef<PreparedLineAudio | null>(null);
-  const piperAudioQueueRef = useRef(new Map<number, PreparedLineAudio>());
+  const preparedAudioQueueRef = useRef(new Map<number, PreparedLineAudio>());
   const playbackLines = useRef<ReadLine[]>([]);
   const readingMode = useRef<ReadingMode>('preview');
   const nextLine = useRef<(index: number, token: number) => void>(() => {});
@@ -503,8 +544,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const stop = useCallback(() => {
     generation.current += 1;
     readingRequested.current = false;
-    preparedAudioRef.current = null;
-    piperAudioQueueRef.current.clear();
+    preparedAudioQueueRef.current.clear();
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -540,22 +580,12 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
           if (generation.current !== token) return;
           const key = voiceCacheKey(line.text, gender, pace, engine);
           const warmedAudio = previewWarmup?.key === key ? previewWarmup.audio : null;
-          const prepared = preparedAudioRef.current;
-          const matchesPrepared = prepared?.token === token && prepared.index === index && prepared.key === key;
-          const piperPrepared = piperAudioQueueRef.current.get(index);
-          const matchesPiperPrepared = engine === 'piper' && piperPrepared?.token === token && piperPrepared.key === key;
+          const prepared = preparedAudioQueueRef.current.get(index);
+          const matchesPrepared = prepared?.token === token && prepared.key === key;
           let audio: KokoroAudio;
           if (warmedAudio) audio = await warmedAudio;
-          else if (matchesPiperPrepared && piperPrepared) {
-            piperAudioQueueRef.current.delete(index);
-            try { audio = await piperPrepared.audio; }
-            catch {
-              if (generation.current !== token) return;
-              audio = await generateVoiceAudio(engine, line.text, gender, pace);
-            }
-          }
           else if (matchesPrepared && prepared) {
-            preparedAudioRef.current = null;
+            preparedAudioQueueRef.current.delete(index);
             try { audio = await prepared.audio; }
             catch {
               if (generation.current !== token) return;
@@ -564,7 +594,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
           } else audio = await generateVoiceAudio(engine, line.text, gender, pace);
           if (generation.current !== token) return;
           if (previewWarmup?.key === key) previewWarmup = null;
-          if (prepared?.token === token && prepared.index === index) preparedAudioRef.current = null;
+          if (prepared?.token === token && prepared.index === index) preparedAudioQueueRef.current.delete(index);
           const context = audioContextRef.current || sharedAudioContext || new AudioContext();
           sharedAudioContext = context;
           audioContextRef.current = context;
@@ -585,17 +615,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
           setMessage(engine === 'piper' ? 'The local Piper voice is reading.' : 'The local whisper is reading.');
           keepVoiceEngineWarm(engine);
           const nextLineIndex = index + 1;
-          if (engine !== 'piper' && nextLineIndex < lines.length && canWarmVoiceInBackground()) {
-            const nextText = lines[nextLineIndex].text;
-            const nextKey = voiceCacheKey(nextText, gender, pace, engine);
-            const nextAudio = generateVoiceAudio(engine, nextText, gender, pace);
-            const preparedNext: PreparedLineAudio = { token, index: nextLineIndex, key: nextKey, audio: nextAudio };
-            preparedAudioRef.current = preparedNext;
-            void nextAudio.catch(() => {
-              if (preparedAudioRef.current === preparedNext) preparedAudioRef.current = null;
-            });
-          }
-          if (engine === 'piper') warmPiperAudio(nextLineIndex, token, lines, gender, pace);
+          warmVoiceAudio(nextLineIndex, token, lines, engine, gender, pace);
           playNeuralBuffer(buffer, 0, index, token, lines);
         } catch (error) {
           if (generation.current !== token) return;
@@ -654,11 +674,11 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     window.speechSynthesis.speak(utterance);
   };
 
-  function warmPiperAudio(startIndex: number, token: number, lines: ReadLine[], voiceGender: VoiceGender, readingPace: number) {
-    if (engine !== 'piper' || generation.current !== token) return;
-    const queue = piperAudioQueueRef.current;
+  function warmVoiceAudio(startIndex: number, token: number, lines: ReadLine[], voiceEngine: Exclude<VoiceEngine, 'device'>, voiceGender: VoiceGender, readingPace: number) {
+    if (generation.current !== token) return;
+    const queue = preparedAudioQueueRef.current;
     const rate = pitch * (readingPace / 0.88);
-    const targetSeconds = piperBufferTargetSeconds();
+    const targetSeconds = voiceBufferTargetSeconds();
     const currentBuffer = bufferRef.current;
     const context = audioContextRef.current;
     const elapsed = context && sourceRef.current
@@ -669,18 +689,18 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     for (let index = startIndex; index < Math.min(lines.length, startIndex + 6) && bufferedSeconds < targetSeconds; index += 1) {
       if (queue.has(index)) continue;
       const line = lines[index];
-      const key = voiceCacheKey(line.text, voiceGender, readingPace, 'piper');
+      const key = voiceCacheKey(line.text, voiceGender, readingPace, voiceEngine);
       const prepared: PreparedLineAudio = {
         token,
         index,
         key,
-        audio: generatePiper(line.text, voiceGender),
+        audio: generateVoiceAudio(voiceEngine, line.text, voiceGender, readingPace),
       };
       queue.set(index, prepared);
       const reservedSeconds = estimatedSpeechSeconds(line.text, rate);
       bufferedSeconds += reservedSeconds;
       void prepared.audio.catch(() => {
-        if (piperAudioQueueRef.current.get(index) === prepared) piperAudioQueueRef.current.delete(index);
+        if (preparedAudioQueueRef.current.get(index) === prepared) preparedAudioQueueRef.current.delete(index);
       });
     }
   }
@@ -986,8 +1006,8 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
       </div>
       <label className="check-row"><input type="checkbox" checked={automatic} onChange={event => setAutomatic(event.target.checked)} /> Whisper after I choose a book</label>
       <p className="fine-print">{engine === 'piper'
-        ? 'Piper is a local comparison voice. First playback downloads the voice and runtime (about 75 MB total) and caches them in this browser; switching gender downloads the other voice too. Speech is prepared a few lines ahead, with about 10 seconds buffered on smaller devices and up to 16 seconds on capable devices. Book text stays on this device.'
-        : 'Kokoro reads locally with no API key or per-reading limit. Its first model download is about 92 MB and the browser caches it. The model reads English; device voices support other languages. Candlelit ambience gently softens the voice and adds a short room tail.'}</p>
+        ? 'Piper is a local comparison voice. First playback downloads the voice and runtime (about 75 MB total) and caches them in this browser; switching gender downloads the other voice too. Speech is prepared a few lines ahead, with about 10 seconds buffered on lighter devices and up to 16–20 seconds on capable devices. Book text stays on this device.'
+        : 'Kokoro reads locally with no API key or per-reading limit. Its first model download is about 92 MB and the browser caches it. Speech is prepared a few lines ahead within your device memory budget. The model reads English; device voices support other languages. Candlelit ambience gently softens the voice and adds a short room tail.'}</p>
     </div>}
     <div className="whisper-lyrics" aria-label={mode === 'book' ? 'Book text with current line highlighted' : 'Preview transcript with current line highlighted'}>
       <div className="lyrics-heading"><span>{mode === 'book' ? 'FULL BOOK' : 'WHISPER PREVIEW'}</span><span>{visibleLines.length ? `${Math.min(activeLine + 1, visibleLines.length).toLocaleString()} / ${visibleLines.length.toLocaleString()}` : 'Preparing passage'}</span></div>
