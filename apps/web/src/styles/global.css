@@ -286,3 +286,23 @@ button,a,input,select,textarea { -webkit-tap-highlight-color:transparent; }
 @keyframes media-arrive { from { opacity:0; transform:translateY(8px) scale(.992); } to { opacity:1; transform:none; } }
 @media (max-width:680px) { .app-header { min-height:58px; padding-inline:15px; }.app-header .brand { font-size:13px; }.app-header .brand small { display:none; }.app-content { padding-inline:13px; }.apple-library { padding-top:65px; }.now-playing-book { padding-inline:3px; }.now-cover { width:clamp(170px,min(55vw,31vh),284px); }.now-book-copy { margin-top:18px; }.now-book-copy h1 { font-size:clamp(23px,6.2vw,29px); }.now-progress { margin-top:16px; }.now-actions { margin-top:13px; gap:13px; }.apple-library-shelf { margin-top:16px; padding:14px 12px 12px; border-radius:14px; }.apple-book-card { flex-basis:clamp(100px,28vw,126px); }.apple-library-tools { display:grid; grid-template-columns:1fr 1fr; }.apple-library-tools .search-field { grid-column:1/-1; }.player-settings { grid-template-columns:1fr; }.player-settings label:last-child { grid-column:auto; }.now-description { font-size:11px; } }
 @media (prefers-reduced-motion:reduce) { .now-playing-book,.player-settings-panel,.apple-library-tools { animation:none!important; }.now-cover .book-cover,.apple-book-select .book-cover,.now-more,.apple-tool-button,.now-skip,.audio-settings-trigger { transition:none!important; } }
+
+/* Quiet, pointer-led book motion and Material 3 style button feedback. */
+.now-playing-book { will-change:opacity,transform; }
+.now-cover { position:relative; transform-style:preserve-3d; transition:filter 260ms ease; }
+.now-cover .book-cover { transform:rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg)); transition:transform 220ms cubic-bezier(.2,.72,.2,1),filter 320ms ease; }
+.now-cover::after { position:absolute; inset:0; z-index:3; pointer-events:none; content:""; border-radius:10px; background:radial-gradient(circle at var(--glint-x,50%) var(--glint-y,40%),rgba(255,255,255,.16),transparent 40%),linear-gradient(145deg,rgba(255,255,255,.09),transparent 34%); mix-blend-mode:screen; opacity:.48; transition:opacity 220ms ease; }
+.now-cover:hover::after { opacity:.8; }
+.apple-book-card { perspective:800px; transform-origin:50% 65%; }
+.apple-book-card .book-cover { transform-origin:50% 75%; }
+.apple-book-card.is-selected .book-cover { box-shadow:0 15px 34px rgba(0,0,0,.38),0 0 22px color-mix(in srgb,var(--book-accent) 18%,transparent); }
+.apple-library-shelf { border-color:rgba(255,255,255,.15); background:linear-gradient(145deg,rgba(48,49,52,.42),rgba(27,28,30,.36)); backdrop-filter:blur(28px) saturate(1.24); }
+.apple-library-shelf::before { content:""; position:absolute; width:1px; height:1px; pointer-events:none; box-shadow:0 0 92px 38px rgba(198,144,91,.055); }
+.button,.now-more,.apple-tool-button,.now-skip,.audio-settings-trigger { -webkit-tap-highlight-color:transparent; }
+.button:focus-visible,.now-more:focus-visible,.apple-tool-button:focus-visible,.now-skip:focus-visible,.audio-settings-trigger:focus-visible,.apple-book-select:focus-visible { outline:2px solid #f2c78d; outline-offset:3px; }
+.button { min-height:40px; }
+.button:not(:disabled):active { transform:scale(.975); box-shadow:inset 0 1px 3px rgba(0,0,0,.22); }
+.button:disabled { cursor:not-allowed; opacity:.48; transform:none; }
+.player-settings label input[type="range"] { accent-color:#e7c28c; }
+.inline-message .button { margin-left:8px; min-height:30px; padding:4px 10px; border-radius:18px; font-size:10px; }
+@media (prefers-reduced-motion:reduce) { .now-cover,.now-cover .book-cover,.now-cover::after,.apple-book-card,.apple-book-card .book-cover { transition:none!important; transform:none!important; } }
