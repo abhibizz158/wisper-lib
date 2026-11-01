@@ -34,10 +34,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
         },
       },
-      // CSP: block scripts inside book content (foliate-js renders books in iframes)
+      // Keep book content isolated while permitting the local TTS runtime to fetch
+      // its model once and run its WebAssembly workers in the browser.
       headers: {
         'Content-Security-Policy':
-          "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss:; frame-src 'self' blob:;",
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss: https://huggingface.co https://*.huggingface.co https://cdn.jsdelivr.net https://*.xethub.hf.co; frame-src 'self' blob:;",
       },
     },
 

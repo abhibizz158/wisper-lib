@@ -311,6 +311,7 @@ button,a,input,select,textarea { -webkit-tap-highlight-color:transparent; }
 .player-row .button-primary[aria-label="Read full book"] { font-size:0; }
 .whisper-stop { order:2; width:34px; height:34px; min-height:34px; padding:0; border-radius:50%; color:rgba(246,244,240,.76); font-size:11px; }
 .player-settings-panel { width:min(100%,520px); }
+.voice-language-note { color:rgba(241,239,235,.68); font-size:11px; font-weight:400; }
 .voice-gender { display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:3px; margin-bottom:13px; border:1px solid rgba(255,255,255,.12); border-radius:22px; background:rgba(0,0,0,.2); }
 .voice-gender button { min-height:34px; border:0; border-radius:18px; color:rgba(241,239,235,.58); background:transparent; font-size:11px; transition:background 180ms ease,color 180ms ease,box-shadow 180ms ease; }
 .voice-gender button.is-active { color:#211a18; background:#e8c59a; box-shadow:0 2px 10px rgba(0,0,0,.18),inset 0 1px rgba(255,255,255,.45); }

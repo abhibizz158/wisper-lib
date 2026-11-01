@@ -7,6 +7,27 @@ type Envelope<T> = { data: T };
 type ReadLine = { text: string; chapter: string };
 type VoiceGender = 'female' | 'male';
 type ReadingMode = 'preview' | 'book';
+type VoiceEngine = 'neural' | 'device';
+type KokoroModel = import('kokoro-js').KokoroTTS;
+
+const KOKORO_MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
+let kokoroPromise: Promise<KokoroModel> | null = null;
+
+function loadKokoro(onProgress: (progress: number) => void): Promise<KokoroModel> {
+  if (!kokoroPromise) {
+    kokoroPromise = import('kokoro-js').then(({ KokoroTTS }) => KokoroTTS.from_pretrained(KOKORO_MODEL, {
+      dtype: 'q8',
+      device: 'wasm',
+      progress_callback: info => {
+        if (info.status === 'progress') onProgress(Math.round(info.progress));
+      },
+    })).catch(error => {
+      kokoroPromise = null;
+      throw error;
+    });
+  }
+  return kokoroPromise;
+}
 
 const LANGUAGES = [
   ['en-US', 'English (US)'], ['en-GB', 'English (UK)'], ['es-ES', 'Spanish'],
@@ -73,6 +94,11 @@ function savedGender(): VoiceGender {
   catch { return 'female'; }
 }
 
+function savedEngine(): VoiceEngine {
+  try { return localStorage.getItem('whisper-voice-engine') === 'device' ? 'device' : 'neural'; }
+  catch { return 'neural'; }
+}
+
 export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const [language, setLanguage] = useState(book.language || 'en-US');
   const [automatic, setAutomatic] = useState(savedAutoPreview);
@@ -80,12 +106,14 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const [playing, setPlaying] = useState(false);
   const [paused, setPaused] = useState(false);
   const [message, setMessage] = useState('');
+  const [engine, setEngine] = useState<VoiceEngine>(savedEngine);
+  const [modelProgress, setModelProgress] = useState<number | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [voiceURI, setVoiceURI] = useState('');
   const [gender, setGender] = useState<VoiceGender>(savedGender);
   const [volume, setVolume] = useState(0.7);
-  const [pitch, setPitch] = useState(0.68);
-  const [pace, setPace] = useState(0.74);
+  const [pitch, setPitch] = useState(0.96);
+  const [pace, setPace] = useState(0.88);
   const [mode, setMode] = useState<ReadingMode>('preview');
   const [visibleLines, setVisibleLines] = useState<ReadLine[]>([]);
   const [activeLine, setActiveLine] = useState(0);
@@ -95,6 +123,11 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const playbackLines = useRef<ReadLine[]>([]);
   const readingMode = useRef<ReadingMode>('preview');
   const nextLine = useRef<(index: number, token: number) => void>(() => {});
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const bufferRef = useRef<AudioBuffer | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const playbackOffset = useRef(0);
+  const playbackStartedAt = useRef(0);
   const preview = useQuery({
     queryKey: ['preview', book.id, language, book.lastLocation],
     queryFn: ({ signal }) => api.get<Envelope<WhisperPreview>>(`/books/${book.id}/preview?language=${language}`, { signal }),
@@ -111,14 +144,27 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const previewLines = useMemo(() => toReadLines(current?.transcript || '', 'Preview'), [current?.transcript]);
   const selectedVoice = useMemo(() => preferredVoice(voices, language, gender, voiceURI), [voices, language, gender, voiceURI]);
 
+  const stopAudio = useCallback(() => {
+    const source = sourceRef.current;
+    sourceRef.current = null;
+    if (source) {
+      source.onended = null;
+      try { source.stop(); } catch { /* It may already have ended. */ }
+    }
+    bufferRef.current = null;
+    playbackOffset.current = 0;
+  }, []);
+
   const stop = useCallback(() => {
     generation.current += 1;
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    stopAudio();
+    setModelProgress(null);
     setPlaying(false);
     setPaused(false);
-  }, []);
+  }, [stopAudio]);
 
   nextLine.current = (index, token) => {
     if (generation.current !== token) return;
@@ -129,12 +175,50 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
       setMessage(readingMode.current === 'book' ? 'You’ve reached the end of this book.' : 'That was the preview.');
       return;
     }
+    const line = lines[index];
+    if (engine === 'neural') {
+      void (async () => {
+        try {
+          setMessage('Waking the local voice…');
+          setModelProgress(progress => progress ?? 0);
+          const tts = await loadKokoro(progress => {
+            if (generation.current === token) setModelProgress(progress);
+          });
+          if (generation.current !== token) return;
+          const audio = await tts.generate(line.text, { voice: gender === 'female' ? 'af_heart' : 'am_onyx', speed: pace });
+          if (generation.current !== token) return;
+          const context = audioContextRef.current || new AudioContext();
+          audioContextRef.current = context;
+          if (context.state === 'suspended') await context.resume();
+          const buffer = context.createBuffer(1, audio.audio.length, audio.sampling_rate);
+          buffer.getChannelData(0).set(audio.audio);
+          bufferRef.current = buffer;
+          playbackOffset.current = 0;
+          setModelProgress(null);
+          setActiveLine(index);
+          setMessage('The local whisper is reading.');
+          playNeuralBuffer(buffer, 0, index, token, lines);
+        } catch {
+          if (generation.current !== token) return;
+          setModelProgress(null);
+          setPlaying(false);
+          setPaused(false);
+          if ('speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined') {
+            setEngine('device');
+            setMessage('The local voice is unavailable here. Continuing with a device voice.');
+            setTimeout(() => { if (generation.current === token) nextLine.current(index, token); }, 0);
+          } else {
+            setMessage('The local voice could not start, and this browser has no device voice. The transcript is still available.');
+          }
+        }
+      })();
+      return;
+    }
     if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
       setPlaying(false);
       setMessage('This browser does not provide speech playback. The transcript is available to read.');
       return;
     }
-    const line = lines[index];
     const utterance = new SpeechSynthesisUtterance(line.text);
     if (selectedVoice) utterance.voice = selectedVoice;
     utterance.lang = language;
@@ -165,6 +249,41 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     window.speechSynthesis.speak(utterance);
   };
 
+  function playNeuralBuffer(buffer: AudioBuffer, offset: number, index: number, token: number, lines: ReadLine[]) {
+    if (generation.current !== token) return;
+    const context = audioContextRef.current;
+    if (!context) return;
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    source.playbackRate.value = pitch;
+    gain.gain.value = volume;
+    source.connect(gain);
+    gain.connect(context.destination);
+    sourceRef.current = source;
+    playbackOffset.current = offset;
+    playbackStartedAt.current = context.currentTime;
+    source.onended = () => {
+      if (sourceRef.current !== source) return;
+      sourceRef.current = null;
+      if (generation.current !== token) return;
+      playbackOffset.current = 0;
+      bufferRef.current = null;
+      if (index + 1 >= lines.length) {
+        setPlaying(false);
+        setPaused(false);
+        setMessage(readingMode.current === 'book' ? 'You’ve reached the end of this book.' : 'That was the preview.');
+        return;
+      }
+      const pause = /[.!?。！？]$/.test(lines[index].text) ? 300 : 165;
+      timer.current = setTimeout(() => nextLine.current(index + 1, token), pause);
+    };
+    setPlaying(true);
+    setPaused(false);
+    setActiveLine(index);
+    source.start(0, offset);
+  }
+
   const startLines = useCallback((lines: ReadLine[], nextMode: ReadingMode) => {
     if (!lines.length) { setMessage('There is no readable text available for this book.'); return; }
     stop();
@@ -192,8 +311,9 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     try {
       localStorage.setItem('whisper-auto-preview', String(automatic));
       localStorage.setItem('whisper-voice-gender', gender);
+      localStorage.setItem('whisper-voice-engine', engine);
     } catch { /* These preferences still apply for this visit. */ }
-  }, [automatic, gender]);
+  }, [automatic, gender, engine]);
 
   useEffect(() => {
     stop();
@@ -202,6 +322,16 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     setActiveLine(0);
     return stop;
   }, [book.id, language, stop]);
+
+  useEffect(() => {
+    if (engine === 'neural' && language !== 'en-US') setLanguage('en-US');
+  }, [engine, language]);
+
+  useEffect(() => () => {
+    stop();
+    void audioContextRef.current?.close();
+    audioContextRef.current = null;
+  }, [stop]);
 
   useEffect(() => {
     if (mode !== 'preview' || playing || paused) return;
@@ -234,12 +364,30 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   function changeGender(value: VoiceGender) {
     setGender(value);
     setVoiceURI('');
-    setPitch(value === 'female' ? 0.68 : 0.54);
+    setPitch(value === 'female' ? 0.96 : 0.91);
   }
 
   function togglePlayback() {
-    if (playing) { window.speechSynthesis.pause(); setPlaying(false); setPaused(true); return; }
-    if (paused) { window.speechSynthesis.resume(); setPlaying(true); setPaused(false); return; }
+    if (playing) {
+      if (engine === 'neural') {
+        const context = audioContextRef.current;
+        const source = sourceRef.current;
+        if (context && source) {
+          playbackOffset.current += (context.currentTime - playbackStartedAt.current) * pitch;
+          sourceRef.current = null;
+          source.onended = null;
+          try { source.stop(); } catch { /* It may already have ended. */ }
+        }
+      } else if ('speechSynthesis' in window) window.speechSynthesis.pause();
+      setPlaying(false); setPaused(true); return;
+    }
+    if (paused) {
+      if (engine === 'neural' && bufferRef.current) {
+        const index = activeLine;
+        playNeuralBuffer(bufferRef.current, playbackOffset.current, index, generation.current, playbackLines.current);
+      } else if ('speechSynthesis' in window) window.speechSynthesis.resume();
+      setPlaying(true); setPaused(false); return;
+    }
     if (mode === 'book' && visibleLines.length) startLines(visibleLines, 'book');
     else startPreview();
   }
@@ -249,7 +397,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
       <div className="player-mark" aria-hidden="true">♫</div>
       <div className="player-copy"><strong>A little whisper</strong><p>{current?.source === 'last-location' ? 'From where you left off' : current?.source === 'glossary' ? 'From the glossary' : 'A passage from inside'}</p></div>
       <button type="button" className="audio-settings-trigger" aria-label="Voice settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(open => !open)}>⚙</button>
-      <button type="button" className="button button-primary" onClick={togglePlayback} disabled={preview.isPending && mode === 'preview' && !playing && !paused} aria-label={playing ? 'Pause reading' : paused ? 'Resume reading' : mode === 'book' ? 'Read full book' : 'Play preview'}>{playing ? 'Pause' : paused ? 'Resume' : mode === 'book' ? 'Read again' : 'Listen'}</button>
+      <button type="button" className="button button-primary" onClick={togglePlayback} disabled={modelProgress !== null || (preview.isPending && mode === 'preview' && !playing && !paused)} aria-label={playing ? 'Pause reading' : paused ? 'Resume reading' : mode === 'book' ? 'Read full book' : 'Play preview'}>{modelProgress !== null ? 'Preparing…' : playing ? 'Pause' : paused ? 'Resume' : mode === 'book' ? 'Read again' : 'Listen'}</button>
       {(playing || paused) && <button type="button" className="button button-quiet whisper-stop" onClick={() => { stop(); setMessage('Playback stopped.'); }} aria-label="Stop reading">■</button>}
     </div>
     {settingsOpen && <div className="player-settings-panel">
@@ -258,16 +406,21 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
         <button type="button" className={gender === 'male' ? 'is-active' : ''} aria-pressed={gender === 'male'} onClick={() => changeGender('male')}>Male</button>
       </div>
       <div className="player-settings">
-        <label>Installed voice<select aria-label="Installed speech voice" value={voiceURI} onChange={event => setVoiceURI(event.target.value)}>
-          <option value="">Automatic · {gender}</option>{voices.map(voice => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} · {voice.lang}</option>)}
+        <label>Voice engine<select aria-label="Voice engine" value={engine} onChange={event => { stop(); setEngine(event.target.value as VoiceEngine); }}>
+          <option value="neural">Local neural voice · Kokoro</option><option value="device">Device voice</option>
         </select></label>
-        <label>Language<select aria-label="Preview language" value={language} onChange={event => setLanguage(event.target.value)}>{LANGUAGES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>
+        {engine === 'device' && <label>Installed voice<select aria-label="Installed speech voice" value={voiceURI} onChange={event => setVoiceURI(event.target.value)}>
+          <option value="">Automatic · {gender}</option>{voices.map(voice => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} · {voice.lang}</option>)}
+        </select></label>}
+        {engine === 'device'
+          ? <label>Language<select aria-label="Preview language" value={language} onChange={event => setLanguage(event.target.value)}>{LANGUAGES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>
+          : <label>Language<span className="voice-language-note">English · US</span></label>}
         <label>Pace<input aria-label="Reading pace" type="range" min="0.58" max="0.94" step="0.02" value={pace} onChange={event => setPace(Number(event.target.value))} /></label>
-        <label>Voice depth<input aria-label="Voice depth" type="range" min="0.4" max="1.05" step="0.05" value={pitch} onChange={event => setPitch(Number(event.target.value))} /></label>
+        <label>Voice depth<input aria-label="Voice depth" type="range" min="0.86" max="1.04" step="0.01" value={pitch} onChange={event => setPitch(Number(event.target.value))} /></label>
         <label>Volume<input aria-label="Preview volume" type="range" min="0" max="1" step="0.05" value={volume} onChange={event => setVolume(Number(event.target.value))} /></label>
       </div>
       <label className="check-row"><input type="checkbox" checked={automatic} onChange={event => setAutomatic(event.target.checked)} /> Whisper after I choose a book</label>
-      <p className="fine-print">Slow pacing and a lower pitch add a measured, hollow tone. Voices are provided by your device; available voice names and gender options vary by operating system.</p>
+      <p className="fine-print">Kokoro reads locally with no API key, subscription, or per-reading limit. Its first download is about 92 MB and the browser caches it; clearing site data means downloading it again. The model currently reads English. Female voice is the default, with a restrained lower depth; device voices remain available for other languages.</p>
     </div>}
     <div className="whisper-lyrics" aria-label={mode === 'book' ? 'Book text with current line highlighted' : 'Preview transcript with current line highlighted'}>
       <div className="lyrics-heading"><span>{mode === 'book' ? 'FULL BOOK' : 'WHISPER PREVIEW'}</span><span>{visibleLines.length ? `${Math.min(activeLine + 1, visibleLines.length).toLocaleString()} / ${visibleLines.length.toLocaleString()}` : 'Preparing passage'}</span></div>
@@ -281,7 +434,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     </div>
     <div className="lyrics-actions">
       <button type="button" className="button button-quiet read-whole-book" onClick={() => { stop(); setMode('book'); setVisibleLines([]); setActiveLine(0); setMessage(fullBook.isPending ? 'Opening the full text…' : 'Preparing the full book…'); setFullBookRequest(value => value + 1); }} disabled={fullBookRequest > 0 && fullBook.isFetching}>{fullBookRequest > 0 && fullBook.isFetching ? 'Opening full book…' : mode === 'book' && playing ? 'Reading full book' : 'Read full book'}</button>
-      {message && <span role="status">{message}</span>}
+      {message && <span role="status">{modelProgress !== null ? `Preparing local voice · ${modelProgress}%` : message}</span>}
     </div>
     {fetchError && <p className="inline-message" role="status">{fetchMessage}<button type="button" className="button button-quiet" onClick={() => { void preview.refetch(); if (fullBookRequest) void fullBook.refetch(); }}>Retry</button></p>}
   </section>;
