@@ -77,6 +77,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@jtsage/piper-tts-web':
+        specifier: 1.2.0
+        version: 1.2.0(onnxruntime-web@1.22.0-dev.20250409-89f8206ba4)
       '@tanstack/react-query':
         specifier: 5.67.3
         version: 5.67.3(react@18.3.1)
@@ -842,6 +845,11 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@jtsage/piper-tts-web@1.2.0':
+    resolution: {integrity: sha512-BgquoLERVR7I6f6AuDvozdu+dVarxGtXLhUQjk/xTleWo4tnNpaNlpJygJPPF+CTZKA6NfjimFVIJNkkRVzhYQ==}
+    peerDependencies:
+      onnxruntime-web: ^1.22.0
 
   '@lukeed/ms@2.0.2':
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
@@ -3314,6 +3322,10 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@jtsage/piper-tts-web@1.2.0(onnxruntime-web@1.22.0-dev.20250409-89f8206ba4)':
+    dependencies:
+      onnxruntime-web: 1.22.0-dev.20250409-89f8206ba4
 
   '@lukeed/ms@2.0.2': {}
 

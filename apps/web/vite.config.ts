@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    worker: { format: 'es' },
 
     resolve: {
       alias: {
@@ -38,7 +39,7 @@ export default defineConfig(({ mode }) => {
       // its model once and run its WebAssembly workers in the browser.
       headers: {
         'Content-Security-Policy':
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss: https://huggingface.co https://*.huggingface.co https://hf.co https://*.hf.co https://*.xethub.hf.co; frame-src 'self' blob:;",
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss: https://huggingface.co https://*.huggingface.co https://hf.co https://*.hf.co https://*.xethub.hf.co https://cdn.jsdelivr.net; frame-src 'self' blob:;",
       },
     },
 
