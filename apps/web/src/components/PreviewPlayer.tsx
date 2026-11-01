@@ -9,6 +9,7 @@ type VoiceGender = 'female' | 'male';
 type ReadingMode = 'preview' | 'book';
 type VoiceEngine = 'neural' | 'device';
 type KokoroAudio = { audio: Float32Array; sampling_rate: number };
+type KokoroVoice = 'af_heart' | 'am_onyx';
 type PreparedLineAudio = { token: number; index: number; key: string; audio: Promise<KokoroAudio> };
 
 type WorkerReply =
@@ -137,7 +138,7 @@ function loadKokoro(onProgress: (progress: number) => void): Promise<void> {
   return kokoroPromise.finally(() => kokoroProgressListeners.delete(onProgress));
 }
 
-function generateKokoro(text: string, voice: string, speed: number) {
+function generateKokoro(text: string, voice: KokoroVoice, speed: number) {
   keepKokoroWarm();
   return sendKokoroRequest<KokoroAudio>({ type: 'generate', text, voice, speed });
 }
@@ -240,6 +241,15 @@ function savedEngine(): VoiceEngine {
   catch { return 'neural'; }
 }
 
+function savedAmbience() {
+  try {
+    const saved = localStorage.getItem('whisper-voice-ambience');
+    if (saved === null) return 0.42;
+    const value = Number(saved);
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0.42;
+  } catch { return 0.42; }
+}
+
 export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const [language, setLanguage] = useState(book.language || 'en-US');
   const [automatic, setAutomatic] = useState(savedAutoPreview);
@@ -254,6 +264,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const [gender, setGender] = useState<VoiceGender>(savedGender);
   const [volume, setVolume] = useState(0.7);
   const [pitch, setPitch] = useState(0.96);
+  const [ambience, setAmbience] = useState(savedAmbience);
   const [pace, setPace] = useState(0.88);
   const [mode, setMode] = useState<ReadingMode>('preview');
   const [visibleLines, setVisibleLines] = useState<ReadLine[]>([]);
@@ -331,7 +342,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
             if (generation.current === token) setModelProgress(progress);
           });
           if (generation.current !== token) return;
-          const voice = gender === 'female' ? 'af_heart' : 'am_onyx';
+          const voice: KokoroVoice = gender === 'female' ? 'af_heart' : 'am_onyx';
           const key = voiceCacheKey(line.text, gender, pace);
           const warmedAudio = previewWarmup?.key === key ? previewWarmup.audio : null;
           const prepared = preparedAudioRef.current;
@@ -440,23 +451,23 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     const source = context.createBufferSource();
     const highPass = context.createBiquadFilter();
     highPass.type = 'highpass';
-    highPass.frequency.value = 82;
+    highPass.frequency.value = 72 + ambience * 22;
     highPass.Q.value = 0.55;
     const warmth = context.createBiquadFilter();
     warmth.type = 'peaking';
     warmth.frequency.value = 245;
     warmth.Q.value = 0.72;
-    warmth.gain.value = 1.1;
+    warmth.gain.value = 0.5 + (1 - ambience) * 0.7;
     const softness = context.createBiquadFilter();
     softness.type = 'lowpass';
-    softness.frequency.value = 7600;
+    softness.frequency.value = 8200 - ambience * 1050;
     softness.Q.value = 0.55;
     const dry = context.createGain();
     dry.gain.value = volume * 0.94;
     const room = context.createConvolver();
     room.buffer = roomImpulse(context);
     const wet = context.createGain();
-    wet.gain.value = volume * 0.085;
+    wet.gain.value = volume * (0.035 + ambience * 0.08);
     const output = context.createGain();
     output.gain.value = 0.92;
     source.buffer = buffer;
@@ -544,8 +555,9 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
       localStorage.setItem('whisper-auto-preview', String(automatic));
       localStorage.setItem('whisper-voice-gender', gender);
       localStorage.setItem('whisper-voice-engine', engine);
+      localStorage.setItem('whisper-voice-ambience', String(ambience));
     } catch { /* These preferences still apply for this visit. */ }
-  }, [automatic, gender, engine]);
+  }, [automatic, gender, engine, ambience]);
 
   useEffect(() => {
     stop();
@@ -562,7 +574,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   useEffect(() => {
     if (!automatic || engine !== 'neural' || !previewLines.length || !canWarmVoiceInBackground()) return;
     const firstLine = previewLines[0].text;
-    const voice = gender === 'female' ? 'af_heart' : 'am_onyx';
+    const voice: KokoroVoice = gender === 'female' ? 'af_heart' : 'am_onyx';
     const key = voiceCacheKey(firstLine, gender, pace);
     let cancelled = false;
     const warm = () => {
@@ -694,10 +706,11 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
           : <label>Language<span className="voice-language-note">English · US</span></label>}
         <label>Pace<input aria-label="Reading pace" type="range" min="0.58" max="0.94" step="0.02" value={pace} onChange={event => setPace(Number(event.target.value))} /></label>
         <label>Voice depth<input aria-label="Voice depth" type="range" min="0.86" max="1.04" step="0.01" value={pitch} onChange={event => setPitch(Number(event.target.value))} /></label>
+        {engine === 'neural' && <label>Candlelit ambience<input aria-label="Candlelit ambience" type="range" min="0" max="1" step="0.05" value={ambience} onChange={event => setAmbience(Number(event.target.value))} /></label>}
         <label>Volume<input aria-label="Preview volume" type="range" min="0" max="1" step="0.05" value={volume} onChange={event => setVolume(Number(event.target.value))} /></label>
       </div>
       <label className="check-row"><input type="checkbox" checked={automatic} onChange={event => setAutomatic(event.target.checked)} /> Whisper after I choose a book</label>
-      <p className="fine-print">Kokoro reads locally with no API key, subscription, or per-reading limit. Its first download is about 92 MB and the browser caches it; clearing site data means downloading it again. The model currently reads English. Female voice is the default, with a restrained lower depth; device voices remain available for other languages.</p>
+      <p className="fine-print">Kokoro reads locally with no API key or per-reading limit. Its first model download is about 92 MB and the browser caches it. The model reads English; device voices support other languages. Candlelit ambience gently softens the voice and adds a short room tail.</p>
     </div>}
     <div className="whisper-lyrics" aria-label={mode === 'book' ? 'Book text with current line highlighted' : 'Preview transcript with current line highlighted'}>
       <div className="lyrics-heading"><span>{mode === 'book' ? 'FULL BOOK' : 'WHISPER PREVIEW'}</span><span>{visibleLines.length ? `${Math.min(activeLine + 1, visibleLines.length).toLocaleString()} / ${visibleLines.length.toLocaleString()}` : 'Preparing passage'}</span></div>
