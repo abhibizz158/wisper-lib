@@ -8,6 +8,7 @@ import { sendError } from './lib/errors.js';
 import { healthRoutes } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
 import { libraryRoutes } from './routes/library.js';
+import { voiceRoutes } from './routes/voice.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -38,5 +39,6 @@ export async function createApp(options:{userId?:string;logging?:boolean}={}) {
   await app.register(healthRoutes,{prefix:'/api/v1'});
   await app.register(meRoutes,{prefix:'/api/v1'});
   await app.register(libraryRoutes,{prefix:'/api/v1'});
+  await app.register(voiceRoutes,{prefix:'/api/v1'});
   return app;
 }

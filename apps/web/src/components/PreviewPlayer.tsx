@@ -7,7 +7,7 @@ type Envelope<T> = { data: T };
 type ReadLine = { text: string; chapter: string };
 type VoiceGender = 'female' | 'male';
 type ReadingMode = 'preview' | 'book';
-type VoiceEngine = 'neural' | 'piper' | 'device';
+type VoiceEngine = 'neural' | 'piper' | 'espeak' | 'orpheus' | 'device';
 type WhisperStyle = 'candlelit' | 'hollow' | 'storyteller' | 'clear' | 'custom';
 type KokoroAudio = { audio: Float32Array; sampling_rate: number };
 type KokoroVoice = 'af_heart' | 'am_onyx';
@@ -22,20 +22,27 @@ type PendingWorkerRequest = { resolve: (value?: KokoroAudio) => void; reject: (e
 
 let kokoroWorker: Worker | null = null;
 let piperWorker: Worker | null = null;
+let espeakWorker: Worker | null = null;
 let piperGender: VoiceGender | null = null;
 let workerRequestId = 0;
 let kokoroPromise: Promise<void> | null = null;
 let piperPromise: Promise<void> | null = null;
+let espeakPromise: Promise<void> | null = null;
 let kokoroLoaded = false;
 let piperLoaded = false;
+let espeakLoaded = false;
 let kokoroProgress = 0;
 let piperProgress = 0;
+let espeakProgress = 0;
 let kokoroUnloadTimer: ReturnType<typeof setTimeout> | null = null;
 let piperUnloadTimer: ReturnType<typeof setTimeout> | null = null;
+let espeakUnloadTimer: ReturnType<typeof setTimeout> | null = null;
 const kokoroProgressListeners = new Set<(progress: number) => void>();
 const piperProgressListeners = new Set<(progress: number) => void>();
+const espeakProgressListeners = new Set<(progress: number) => void>();
 const pendingWorkerRequests = new Map<number, PendingWorkerRequest>();
 const pendingPiperRequests = new Map<number, PendingWorkerRequest>();
+const pendingEspeakRequests = new Map<number, PendingWorkerRequest>();
 let sharedAudioContext: AudioContext | null = null;
 const roomImpulseCache = new WeakMap<AudioContext, AudioBuffer>();
 let previewWarmup: { key: string; audio: Promise<KokoroAudio> } | null = null;
@@ -60,8 +67,8 @@ function estimatedSpeechSeconds(text: string, playbackRate: number) {
   return Math.max(1, words / (2.55 * Math.max(0.55, playbackRate)));
 }
 
-function voiceCacheKey(text: string, gender: VoiceGender, pace: number, engine: VoiceEngine) {
-  return `${engine}:${gender}:${pace}:${text}`;
+function voiceCacheKey(text: string, gender: VoiceGender, pace: number, engine: VoiceEngine, pitch = 1, language = 'en-US') {
+  return `${engine}:${gender}:${pace}:${pitch}:${language}:${text}`;
 }
 
 function canWarmVoiceInBackground() {
@@ -115,6 +122,36 @@ function releaseKokoroAfterIdle() {
 function keepPiperWarm() {
   if (piperUnloadTimer) clearTimeout(piperUnloadTimer);
   piperUnloadTimer = null;
+}
+
+function keepEspeakWarm() {
+  if (espeakUnloadTimer) clearTimeout(espeakUnloadTimer);
+  espeakUnloadTimer = null;
+}
+
+function resetEspeakWorker() {
+  if (espeakUnloadTimer) clearTimeout(espeakUnloadTimer);
+  espeakUnloadTimer = null;
+  espeakWorker?.terminate();
+  espeakWorker = null;
+  espeakLoaded = false;
+  espeakProgress = 0;
+  espeakPromise = null;
+  pendingEspeakRequests.forEach(request => request.reject(new Error('eSpeak NG voice was stopped.')));
+  pendingEspeakRequests.clear();
+}
+
+function releaseEspeakAfterIdle() {
+  keepEspeakWarm();
+  if (!espeakLoaded || !espeakWorker) return;
+  espeakUnloadTimer = setTimeout(() => {
+    espeakUnloadTimer = null;
+    if (pendingEspeakRequests.size) {
+      releaseEspeakAfterIdle();
+      return;
+    }
+    resetEspeakWorker();
+  }, 120_000);
 }
 
 function resetPiperWorker() {
@@ -190,6 +227,7 @@ function sendKokoroRequest<T = KokoroAudio | undefined>(request: Record<string, 
 
 function loadKokoro(onProgress: (progress: number) => void): Promise<void> {
   resetPiperWorker();
+  resetEspeakWorker();
   kokoroProgressListeners.add(onProgress);
   onProgress(kokoroLoaded ? 100 : kokoroProgress);
   keepKokoroWarm();
@@ -269,6 +307,7 @@ function sendPiperRequest<T = KokoroAudio | undefined>(gender: VoiceGender, requ
 
 function loadPiper(gender: VoiceGender, onProgress: (progress: number) => void): Promise<void> {
   resetKokoroWorker();
+  resetEspeakWorker();
   getPiperWorker(gender);
   piperProgressListeners.add(onProgress);
   onProgress(piperLoaded ? 100 : piperProgress);
@@ -292,24 +331,121 @@ function generatePiper(text: string, gender: VoiceGender) {
   return sendPiperRequest<KokoroAudio>(gender, { type: 'generate', text });
 }
 
-function loadVoiceEngine(engine: VoiceEngine, gender: VoiceGender, onProgress: (progress: number) => void) {
-  return engine === 'piper' ? loadPiper(gender, onProgress) : loadKokoro(onProgress);
+function getEspeakWorker() {
+  if (!espeakWorker) {
+    const worker = new Worker(new URL('../workers/espeak.worker.ts', import.meta.url), { type: 'module' });
+    espeakWorker = worker;
+    worker.onmessage = event => {
+      const reply = event.data as WorkerReply;
+      if (reply.type === 'progress') {
+        espeakProgress = reply.progress;
+        espeakProgressListeners.forEach(listener => listener(espeakProgress));
+        return;
+      }
+      const pending = pendingEspeakRequests.get(reply.id);
+      if (!pending) return;
+      pendingEspeakRequests.delete(reply.id);
+      if (reply.type === 'error') pending.reject(new Error(reply.message));
+      else if (reply.type === 'ready') pending.resolve();
+      else pending.resolve({ audio: new Float32Array(reply.audio), sampling_rate: reply.samplingRate });
+    };
+    worker.onerror = event => {
+      const error = new Error(event.message || 'The eSpeak NG worker stopped unexpectedly.');
+      pendingEspeakRequests.forEach(request => request.reject(error));
+      pendingEspeakRequests.clear();
+      worker.terminate();
+      if (espeakWorker === worker) resetEspeakWorker();
+    };
+  }
+  return espeakWorker;
 }
 
-function generateVoiceAudio(engine: VoiceEngine, text: string, gender: VoiceGender, pace: number) {
+function sendEspeakRequest<T = KokoroAudio | undefined>(request: Record<string, unknown>): Promise<T> {
+  const worker = getEspeakWorker();
+  const id = ++workerRequestId;
+  return new Promise<T>((resolve, reject) => {
+    pendingEspeakRequests.set(id, { resolve: value => resolve(value as T), reject });
+    try { worker.postMessage({ ...request, id }); }
+    catch (error) {
+      pendingEspeakRequests.delete(id);
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+}
+
+function loadEspeak(onProgress: (progress: number) => void): Promise<void> {
+  resetKokoroWorker();
+  resetPiperWorker();
+  getEspeakWorker();
+  espeakProgressListeners.add(onProgress);
+  onProgress(espeakLoaded ? 100 : espeakProgress);
+  keepEspeakWarm();
+  if (!espeakPromise) {
+    espeakProgress = 0;
+    espeakPromise = sendEspeakRequest<void>({ type: 'load' }).then(() => {
+      espeakLoaded = true;
+      espeakProgress = 100;
+      releaseEspeakAfterIdle();
+    }).catch(error => {
+      resetEspeakWorker();
+      throw error;
+    });
+  }
+  return espeakPromise.finally(() => espeakProgressListeners.delete(onProgress));
+}
+
+function generateEspeak(text: string, gender: VoiceGender, pitch: number, language: string) {
+  keepEspeakWarm();
+  return sendEspeakRequest<KokoroAudio>({ type: 'generate', text, gender, pitch, language });
+}
+
+async function generateOrpheus(text: string, gender: VoiceGender): Promise<KokoroAudio> {
+  const response = await api.post<Response>('/voice/orpheus', {
+    input: text,
+    voice: gender === 'female' ? 'tara' : 'leo',
+    model: 'canopylabs/orpheus-tts-0.1-finetune-prod',
+    response_format: 'wav',
+  });
+  const context = sharedAudioContext || new AudioContext();
+  sharedAudioContext = context;
+  const decoded = await context.decodeAudioData(await response.arrayBuffer());
+  const samples = new Float32Array(decoded.length);
+  for (let channel = 0; channel < decoded.numberOfChannels; channel += 1) {
+    const channelData = decoded.getChannelData(channel);
+    for (let index = 0; index < samples.length; index += 1) samples[index] += channelData[index] / decoded.numberOfChannels;
+  }
+  return { audio: samples, sampling_rate: decoded.sampleRate };
+}
+
+function loadVoiceEngine(engine: VoiceEngine, gender: VoiceGender, onProgress: (progress: number) => void) {
+  if (engine === 'piper') return loadPiper(gender, onProgress);
+  if (engine === 'espeak') return loadEspeak(onProgress);
+  if (engine === 'orpheus') {
+    resetKokoroWorker(); resetPiperWorker(); resetEspeakWorker();
+    onProgress(100);
+    return Promise.resolve();
+  }
+  return loadKokoro(onProgress);
+}
+
+function generateVoiceAudio(engine: VoiceEngine, text: string, gender: VoiceGender, pace: number, pitch = 0.93, language = 'en-US') {
   if (engine === 'piper') return generatePiper(text, gender);
+  if (engine === 'espeak') return generateEspeak(text, gender, pitch, language);
+  if (engine === 'orpheus') return generateOrpheus(text, gender);
   const voice: KokoroVoice = gender === 'female' ? 'af_heart' : 'am_onyx';
   return generateKokoro(text, voice, pace);
 }
 
 function keepVoiceEngineWarm(engine: VoiceEngine) {
   if (engine === 'piper') keepPiperWarm();
-  else keepKokoroWarm();
+  else if (engine === 'espeak') keepEspeakWarm();
+  else if (engine === 'neural') keepKokoroWarm();
 }
 
 function releaseVoiceEngineAfterIdle(engine: VoiceEngine) {
   if (engine === 'piper') releasePiperAfterIdle();
-  else releaseKokoroAfterIdle();
+  else if (engine === 'espeak') releaseEspeakAfterIdle();
+  else if (engine === 'neural') releaseKokoroAfterIdle();
 }
 
 const LANGUAGES = [
@@ -448,7 +584,7 @@ function savedGender(): VoiceGender {
 function savedEngine(): VoiceEngine {
   try {
     const value = localStorage.getItem('whisper-voice-engine');
-    return value === 'device' || value === 'piper' ? value : 'neural';
+    return value === 'device' || value === 'piper' || value === 'espeak' || value === 'orpheus' ? value : 'neural';
   }
   catch { return 'neural'; }
 }
@@ -551,6 +687,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     stopAudio();
     releaseKokoroAfterIdle();
     releasePiperAfterIdle();
+    releaseEspeakAfterIdle();
     setModelProgress(null);
     setPlaying(false);
     setPaused(false);
@@ -569,29 +706,36 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     if (engine !== 'device') {
       void (async () => {
         try {
-          const voiceReady = engine === 'piper' ? piperLoaded : kokoroLoaded;
+          const voiceReady = engine === 'piper' ? piperLoaded : engine === 'espeak' ? espeakLoaded : engine === 'orpheus' ? true : kokoroLoaded;
           setMessage(engine === 'piper'
             ? voiceReady ? 'Finding the next line with Piper…' : 'Preparing the Piper test voice…'
-            : voiceReady ? 'Finding the next line…' : 'Waking the local voice…');
+            : engine === 'espeak'
+              ? voiceReady ? 'Finding the next line with eSpeak NG…' : 'Preparing the eSpeak NG voice…'
+              : engine === 'orpheus' ? 'Preparing the Orpheus passage…'
+                : voiceReady ? 'Finding the next line…' : 'Waking the local voice…');
           if (!voiceReady) setModelProgress(progress => progress ?? 0);
           await loadVoiceEngine(engine, gender, progress => {
             if (generation.current === token) setModelProgress(progress);
           });
           if (generation.current !== token) return;
-          const key = voiceCacheKey(line.text, gender, pace, engine);
+          const key = voiceCacheKey(line.text, gender, pace, engine, pitch, language);
           const warmedAudio = previewWarmup?.key === key ? previewWarmup.audio : null;
           const prepared = preparedAudioQueueRef.current.get(index);
           const matchesPrepared = prepared?.token === token && prepared.key === key;
-          let audio: KokoroAudio;
-          if (warmedAudio) audio = await warmedAudio;
+          const nextLineIndex = index + 1;
+          let audioPromise: Promise<KokoroAudio>;
+          if (warmedAudio) audioPromise = warmedAudio;
           else if (matchesPrepared && prepared) {
             preparedAudioQueueRef.current.delete(index);
-            try { audio = await prepared.audio; }
-            catch {
-              if (generation.current !== token) return;
-              audio = await generateVoiceAudio(engine, line.text, gender, pace);
-            }
-          } else audio = await generateVoiceAudio(engine, line.text, gender, pace);
+            audioPromise = prepared.audio;
+          } else audioPromise = generateVoiceAudio(engine, line.text, gender, pace, pitch, language);
+          warmVoiceAudio(nextLineIndex, token, lines, engine, gender, pace, pitch, language);
+          let audio: KokoroAudio;
+          try { audio = await audioPromise; }
+          catch {
+            if (generation.current !== token) return;
+            audio = await generateVoiceAudio(engine, line.text, gender, pace, pitch, language);
+          }
           if (generation.current !== token) return;
           if (previewWarmup?.key === key) previewWarmup = null;
           if (prepared?.token === token && prepared.index === index) preparedAudioQueueRef.current.delete(index);
@@ -612,10 +756,8 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
           playbackOffset.current = 0;
           setModelProgress(null);
           setActiveLine(index);
-          setMessage(engine === 'piper' ? 'The local Piper voice is reading.' : 'The local whisper is reading.');
+          setMessage(engine === 'piper' ? 'The local Piper voice is reading.' : engine === 'espeak' ? 'The eSpeak NG comparison voice is reading.' : engine === 'orpheus' ? 'The Orpheus voice is reading.' : 'The local whisper is reading.');
           keepVoiceEngineWarm(engine);
-          const nextLineIndex = index + 1;
-          warmVoiceAudio(nextLineIndex, token, lines, engine, gender, pace);
           playNeuralBuffer(buffer, 0, index, token, lines);
         } catch (error) {
           if (generation.current !== token) return;
@@ -623,8 +765,9 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
           setModelProgress(null);
           setPlaying(false);
           setPaused(false);
-          if (engine === 'piper') {
-            setMessage(`Piper could not prepare this voice. ${error instanceof Error ? error.message : 'Check your connection, then try again.'}`);
+          if (engine === 'piper' || engine === 'espeak' || engine === 'orpheus') {
+            const name = engine === 'piper' ? 'Piper' : engine === 'espeak' ? 'eSpeak NG' : 'Orpheus';
+            setMessage(`${name} could not prepare this voice. ${error instanceof Error ? error.message : 'Check its local service or connection, then try again.'}`);
             return;
           }
           if ('speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined') {
@@ -674,27 +817,28 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     window.speechSynthesis.speak(utterance);
   };
 
-  function warmVoiceAudio(startIndex: number, token: number, lines: ReadLine[], voiceEngine: Exclude<VoiceEngine, 'device'>, voiceGender: VoiceGender, readingPace: number) {
+  function warmVoiceAudio(startIndex: number, token: number, lines: ReadLine[], voiceEngine: Exclude<VoiceEngine, 'device'>, voiceGender: VoiceGender, readingPace: number, voicePitch: number, voiceLanguage: string) {
     if (generation.current !== token) return;
     const queue = preparedAudioQueueRef.current;
-    const rate = pitch * (readingPace / 0.88);
-    const targetSeconds = voiceBufferTargetSeconds();
-    const currentBuffer = bufferRef.current;
-    const context = audioContextRef.current;
-    const elapsed = context && sourceRef.current
-      ? Math.max(0, context.currentTime - playbackStartedAt.current) * rate
-      : playbackOffset.current;
-    let bufferedSeconds = currentBuffer ? Math.max(0, currentBuffer.duration - elapsed) : 0;
-    for (const item of queue.values()) bufferedSeconds += estimatedSpeechSeconds(lines[item.index]?.text || '', rate);
-    for (let index = startIndex; index < Math.min(lines.length, startIndex + 6) && bufferedSeconds < targetSeconds; index += 1) {
+    const rate = voicePitch * (readingPace / 0.88);
+    const targetSeconds = voiceEngine === 'orpheus' ? 12 : voiceBufferTargetSeconds();
+    let bufferedSeconds = 0;
+    for (const [index, item] of queue) {
+      const expectedLine = lines[index];
+      const expectedKey = expectedLine ? voiceCacheKey(expectedLine.text, voiceGender, readingPace, voiceEngine, voicePitch, voiceLanguage) : '';
+      if (item.token !== token || item.key !== expectedKey) queue.delete(index);
+      else bufferedSeconds += estimatedSpeechSeconds(expectedLine.text, rate);
+    }
+    const maxLookAhead = voiceEngine === 'orpheus' ? 1 : 6;
+    for (let index = startIndex; index < Math.min(lines.length, startIndex + maxLookAhead) && bufferedSeconds < targetSeconds; index += 1) {
       if (queue.has(index)) continue;
       const line = lines[index];
-      const key = voiceCacheKey(line.text, voiceGender, readingPace, voiceEngine);
+      const key = voiceCacheKey(line.text, voiceGender, readingPace, voiceEngine, voicePitch, voiceLanguage);
       const prepared: PreparedLineAudio = {
         token,
         index,
         key,
-        audio: generateVoiceAudio(voiceEngine, line.text, voiceGender, readingPace),
+        audio: generateVoiceAudio(voiceEngine, line.text, voiceGender, readingPace, voicePitch, voiceLanguage),
       };
       queue.set(index, prepared);
       const reservedSeconds = estimatedSpeechSeconds(line.text, rate);
@@ -733,7 +877,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     output.gain.value = 0.92;
     const envelope = context.createGain();
     const now = context.currentTime;
-    const rate = engine === 'piper' ? pitch * (pace / 0.88) : pitch;
+    const rate = engine === 'neural' ? pitch : pitch * (pace / 0.88);
     const remaining = Math.max(0, (buffer.duration - offset) / Math.max(0.5, rate));
     const fade = Math.min(0.025, remaining / 3);
     envelope.gain.setValueAtTime(0.0001, now);
@@ -846,13 +990,13 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   }, [book.id, language, stop]);
 
   useEffect(() => {
-    if (engine !== 'device' && language !== 'en-US') setLanguage('en-US');
+    if (!['device', 'espeak'].includes(engine) && language !== 'en-US') setLanguage('en-US');
   }, [engine, language]);
 
   useEffect(() => {
     if (!automatic || engine !== 'neural' || !previewLines.length || !canWarmVoiceInBackground()) return;
     const firstLine = previewLines[0].text;
-    const key = voiceCacheKey(firstLine, gender, pace, engine);
+    const key = voiceCacheKey(firstLine, gender, pace, engine, pitch, language);
     let cancelled = false;
     const warm = () => {
       if (cancelled || readingRequested.current || previewWarmup?.key === key) return;
@@ -866,7 +1010,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
             releaseVoiceEngineAfterIdle(engine);
             throw new Error('Voice preparation cancelled.');
           }
-          return generateVoiceAudio(engine, firstLine, gender, pace);
+          return generateVoiceAudio(engine, firstLine, gender, pace, pitch, language);
         })
         .then(generated => {
           if (!cancelled) setModelProgress(null);
@@ -894,7 +1038,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
       if (idleId !== undefined) idleWindow.cancelIdleCallback?.(idleId);
       if (previewWarmup?.key === key) previewWarmup = null;
     };
-  }, [automatic, book.id, engine, gender, pace, previewLines]);
+  }, [automatic, book.id, engine, gender, pace, pitch, language, previewLines]);
 
   useEffect(() => stop, [stop]);
 
@@ -952,7 +1096,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
         const context = audioContextRef.current;
         const source = sourceRef.current;
         if (context && source) {
-          const rate = engine === 'piper' ? pitch * (pace / 0.88) : pitch;
+          const rate = engine === 'neural' ? pitch : pitch * (pace / 0.88);
           playbackOffset.current += (context.currentTime - playbackStartedAt.current) * rate;
           sourceRef.current = null;
           source.onended = null;
@@ -988,12 +1132,12 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
       </div>
       <div className="player-settings">
         <label>Voice engine<select aria-label="Voice engine" value={engine} onChange={event => { stop(); setEngine(event.target.value as VoiceEngine); }}>
-          <option value="neural">Local neural voice · Kokoro</option><option value="piper">Piper · test (about 75 MB first use)</option><option value="device">Device voice</option>
+          <option value="neural">Local neural voice · Kokoro</option><option value="piper">Piper · local</option><option value="espeak">eSpeak NG · lightweight comparison</option><option value="orpheus">Orpheus · local server</option><option value="device">Device voice</option>
         </select></label>
         {engine === 'device' && <label>Installed voice<select aria-label="Installed speech voice" value={voiceURI} onChange={event => setVoiceURI(event.target.value)}>
           <option value="">Automatic · {gender}</option>{voices.map(voice => <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} · {voice.lang}</option>)}
         </select></label>}
-        {engine === 'device'
+        {engine === 'device' || engine === 'espeak'
           ? <label>Language<select aria-label="Preview language" value={language} onChange={event => setLanguage(event.target.value)}>{LANGUAGES.map(([code, label]) => <option key={code} value={code}>{label}</option>)}</select></label>
           : <label>Language<span className="voice-language-note">English · US</span></label>}
         {engine !== 'device' && <label>Whisper style<select aria-label="Whisper style" value={whisperStyle} onChange={event => selectWhisperStyle(event.target.value as WhisperStyle)}>
@@ -1007,7 +1151,13 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
       <label className="check-row"><input type="checkbox" checked={automatic} onChange={event => setAutomatic(event.target.checked)} /> Whisper after I choose a book</label>
       <p className="fine-print">{engine === 'piper'
         ? 'Piper is a local comparison voice. First playback downloads the voice and runtime (about 75 MB total) and caches them in this browser; switching gender downloads the other voice too. Speech is prepared a few lines ahead, with about 10 seconds buffered on lighter devices and up to 16–20 seconds on capable devices. Book text stays on this device.'
-        : 'Kokoro reads locally with no API key or per-reading limit. Its first model download is about 92 MB and the browser caches it. Speech is prepared a few lines ahead within your device memory budget. The model reads English; device voices support other languages. Candlelit ambience gently softens the voice and adds a short room tail.'}</p>
+        : engine === 'espeak'
+          ? 'eSpeak NG is a compact synthetic voice for comparison. Its small WebAssembly runtime and English data load only when selected; speech is synthesized in a worker and buffered ahead.'
+          : engine === 'orpheus'
+            ? 'Orpheus runs through a separate local service. Set ORPHEUS_TTS_URL in the API environment to an OpenAI-compatible audio endpoint; its 3B model is served outside the browser.'
+            : engine === 'neural'
+              ? 'Kokoro reads locally with no API key or per-reading limit. Its first model download is about 92 MB and the browser caches it. Speech is synthesized ahead while each block plays, within your device memory budget. The model reads English; device voices support other languages. Candlelit ambience gently softens the voice and adds a short room tail.'
+              : 'Uses speech voices installed in your browser or device.'}</p>
     </div>}
     <div className="whisper-lyrics" aria-label={mode === 'book' ? 'Book text with current line highlighted' : 'Preview transcript with current line highlighted'}>
       <div className="lyrics-heading"><span>{mode === 'book' ? 'FULL BOOK' : 'WHISPER PREVIEW'}</span><span>{visibleLines.length ? `${Math.min(activeLine + 1, visibleLines.length).toLocaleString()} / ${visibleLines.length.toLocaleString()}` : 'Preparing passage'}</span></div>

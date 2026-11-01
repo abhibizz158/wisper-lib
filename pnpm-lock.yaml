@@ -80,6 +80,9 @@ importers:
       '@jtsage/piper-tts-web':
         specifier: 1.2.0
         version: 1.2.0(onnxruntime-web@1.22.0-dev.20250409-89f8206ba4)
+      '@spelling-creator/spellophone':
+        specifier: ^0.2.1
+        version: 0.2.1
       '@tanstack/react-query':
         specifier: 5.67.3
         version: 5.67.3(react@18.3.1)
@@ -1226,6 +1229,10 @@ packages:
   '@smithy/util-utf8@4.5.2':
     resolution: {integrity: sha512-7wNWV7SugHpcMA7uzEawJNpE0GrasXM7a9E+1+Wm6NxVuDClESac/AKt+G7jMZNUz5vBLWqKlqVV7Sv7AtUr6Q==}
     engines: {node: '>=18.0.0'}
+
+  '@spelling-creator/spellophone@0.2.1':
+    resolution: {integrity: sha512-VIqceoh9+mdm63S2pY1FGGVH5nateiLZY0PoD+ADFqKWl+zYLnY13zeywVDzc/w+hv9uLTItSC96sHbHBiNPtA==}
+    engines: {node: '>=24'}
 
   '@tanstack/query-core@5.67.3':
     resolution: {integrity: sha512-pq76ObpjcaspAW4OmCbpXLF6BCZP2Zr/J5ztnyizXhSlNe7fIUp0QKZsd0JMkw9aDa+vxDX/OY7N+hjNY/dCGg==}
@@ -3652,6 +3659,8 @@ snapshots:
     dependencies:
       '@smithy/core': 3.38.1
       tslib: 2.9.1
+
+  '@spelling-creator/spellophone@0.2.1': {}
 
   '@tanstack/query-core@5.67.3': {}
 

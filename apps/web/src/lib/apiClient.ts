@@ -41,7 +41,9 @@ async function request<T>(
   if (
     contentType.includes('application/octet-stream') ||
     contentType.includes('text/markdown') ||
-    contentType.includes('audio/mpeg')
+    contentType.includes('audio/mpeg') ||
+    contentType.includes('audio/wav') ||
+    contentType.includes('audio/x-wav')
   ) {
     if (!res.ok) {
       throw new ApiClientError('DOWNLOAD_ERROR', 'File download failed', res.status);

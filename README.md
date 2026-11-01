@@ -16,7 +16,7 @@ wisper-lib is a personal library, reader, writing desk, and reading tracker. Bro
 | Notes | Keep a book note or attach a note to a reader page and selected passage. Search and tag notes, recover an in-progress draft on the same browser, and export Markdown or JSON. |
 | Writing desk | Create an original book, arrange chapters, choose body/glossary/front matter, draft in Markdown with a preview and formatting tools, track a word goal, organize citations, and export Markdown or EPUB. Local drafts can be recovered after a browser interruption. |
 | Personal reviews | Save a review with a star rating, write a caption, preview a 1080 × 1350 poster, download it as PNG, or use the device share sheet when supported. Nothing is posted automatically. |
-| Book whispers | Preview a short readable passage from the last saved location, a glossary passage, or book text. Audio is opt-in. A free Kokoro voice can run in the browser, with the device voice available for other languages. Amazon Polly remains an optional server-side provider. |
+| Book whispers | Preview a readable passage or read the full book. Compare Kokoro, Piper, eSpeak NG, an optional Orpheus server, and installed device voices. Local engines prepare the next text blocks during playback. Amazon Polly remains an optional server-side provider. |
 | Sample shelf | Add selected technical chapters from *The Rust Programming Language*, *The Cargo Book*, and *Rust by Example*. These are samples, not complete editions; their MIT notices and source links travel with the books. |
 
 The supported import formats are DRM-free EPUB, PDF, Markdown, and UTF-8 text. Other ebook formats, OCR, online book discovery, phone AR, location memories, and VR are future work. An EPUB is currently read as extracted text rather than in its original page layout. PDFs retain the original file viewer as an option.
@@ -25,7 +25,7 @@ The supported import formats are DRM-free EPUB, PDF, Markdown, and UTF-8 text. O
 
 The website comes first, followed by a shared-library phone app, phone AR notes, and a VR reading room. AR notes will be anchored through the phone camera first; VR note placement comes later. A normal list and text editor remain available even when immersive features arrive.
 
-For whispers, the website first shows a transcript selected from book text. **Free local whisper** loads the Apache-2.0 Kokoro voice model only after the reader chooses **Listen**; the model runs on-device and the browser caches downloaded model files. English uses a slower, softly filtered voice for the reading-room atmosphere. Other languages use an installed device voice. No passage text goes to a speech service in local mode. Readers can choose Amazon Polly instead; that option sends the visible short passage to the API, which uses Polly only when AWS credentials are configured. Private notes are never included. The language menu selects a voice; it does not translate the book.
+For whispers, the website shows a transcript selected from book text. Kokoro and Piper run locally in browser workers; eSpeak NG is a compact WebAssembly comparison voice. All three build a bounded queue of upcoming text blocks while the current block plays, then discard consumed audio. Their local modes keep passage text on the device. The eSpeak NG data files are fetched from jsDelivr on first use. Orpheus appears as an optional comparison engine and requires a separately running OpenAI-compatible audio endpoint configured in `apps/api/.env` as `ORPHEUS_TTS_URL`; its 3B model does not fit the in-browser lightweight path. When selected, the current text block is sent to that configured service. The language menu selects a voice; it does not translate the book. eSpeak NG is GPL-3.0-or-later; review its terms before redistributing a combined build.
 
 ## Technology
 
@@ -36,10 +36,10 @@ For whispers, the website first shows a transcript selected from book text. **Fr
 | Database | PostgreSQL through `pg`; local PostgreSQL or a Docker-managed development database |
 | Browser state | TanStack Query; IndexedDB for recoverable writing and note drafts |
 | Imports and exports | `yauzl`, `cheerio`, `pdfjs-dist`, `fflate` |
-| Speech | Browser-local Kokoro TTS (lazy loaded on Listen), device speech fallback, optional AWS SDK for JavaScript v3 client for Amazon Polly Standard |
+| Speech | Browser-local Kokoro, Piper and eSpeak NG; optional Orpheus-compatible local endpoint; device speech fallback; optional AWS SDK for JavaScript v3 for Amazon Polly Standard |
 | Shared contracts | `packages/shared-types` for browser and API schemas |
 
-The local voice uses [`kokoro-js`](https://github.com/hexgrad/kokoro) and the [Apache-2.0 Kokoro-82M model](https://huggingface.co/hexgrad/Kokoro-82M). The browser downloads the model on first use and retains it in its own cache; model files are not checked into this repository.
+Local voice models and dictionaries load only after selecting an engine and are not checked into this repository. Kokoro uses [`kokoro-js`](https://github.com/hexgrad/kokoro) and the [Apache-2.0 Kokoro-82M model](https://huggingface.co/hexgrad/Kokoro-82M); Piper uses [`@jtsage/piper-tts-web`](https://github.com/jtsage/piper-tts-web). eSpeak NG is provided by [Spellophone](https://github.com/Spelling-Creator/spellophone). Orpheus requests use `ORPHEUS_TTS_URL`, which should point to a local OpenAI-compatible `/v1/audio/speech` endpoint returning WAV audio. The app forwards one short reading block at a time and keeps the Orpheus lookahead to one block to avoid overloading the separate model server.
 
 There is no deployed AWS environment yet. The local build does not need AWS credentials. Before deploying, a suitable AWS path can use Amplify Hosting for the static website, ECS/Fargate for the API, RDS PostgreSQL, S3 for book files and covers, Cognito for real accounts, Polly for speech, and CloudWatch for service monitoring. Add queues, caches, or database proxies only when measured workload justifies them. Estimate account-specific costs before provisioning.
 

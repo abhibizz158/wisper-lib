@@ -12,6 +12,7 @@ export const config = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   isDev: (process.env.NODE_ENV ?? 'development') === 'development',
   webOrigin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+  orpheusTtsUrl: process.env.ORPHEUS_TTS_URL,
 
   // File storage — local filesystem in dev, swap to S3 adapter in Phase 2
   uploadsDir: path.resolve(process.env.UPLOADS_DIR ?? './uploads'),
