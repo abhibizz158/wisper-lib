@@ -15,6 +15,7 @@
     "@wisper-lib/shared-types": "workspace:*",
     "idb": "8.0.2",
     "kokoro-js": "^1.2.1",
+    "onnxruntime-web": "1.22.0-dev.20250409-89f8206ba4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-markdown": "10.1.0",

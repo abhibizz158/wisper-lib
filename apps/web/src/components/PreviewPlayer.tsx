@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookContent, LibraryBook, WhisperPreview } from '@wisper-lib/shared-types';
+import ortWasmModuleUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs?url';
+import ortWasmUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm?url';
 import { api } from '@/lib/apiClient';
 
 type Envelope<T> = { data: T };
@@ -22,16 +24,19 @@ function loadKokoro(onProgress: (progress: number) => void): Promise<KokoroModel
   onProgress(kokoroLoaded ? 100 : kokoroProgress);
   if (!kokoroPromise) {
     kokoroProgress = 0;
-    kokoroPromise = import('kokoro-js').then(({ KokoroTTS }) => KokoroTTS.from_pretrained(KOKORO_MODEL, {
-      dtype: 'q8',
-      device: 'wasm',
-      progress_callback: info => {
-        if (info.status === 'progress') {
-          kokoroProgress = Math.round(info.progress);
-          kokoroProgressListeners.forEach(listener => listener(kokoroProgress));
-        }
-      },
-    })).then(model => {
+    kokoroPromise = import('kokoro-js').then(({ KokoroTTS, env }) => {
+      env.wasmPaths = { mjs: ortWasmModuleUrl, wasm: ortWasmUrl };
+      return KokoroTTS.from_pretrained(KOKORO_MODEL, {
+        dtype: 'q8',
+        device: 'wasm',
+        progress_callback: info => {
+          if (info.status === 'progress') {
+            kokoroProgress = Math.round(info.progress);
+            kokoroProgressListeners.forEach(listener => listener(kokoroProgress));
+          }
+        },
+      });
+    }).then(model => {
       kokoroLoaded = true;
       kokoroProgress = 100;
       return model;
@@ -220,8 +225,9 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
           setActiveLine(index);
           setMessage('The local whisper is reading.');
           playNeuralBuffer(buffer, 0, index, token, lines);
-        } catch {
+        } catch (error) {
           if (generation.current !== token) return;
+          console.error('Local neural voice failed', error);
           setModelProgress(null);
           setPlaying(false);
           setPaused(false);
