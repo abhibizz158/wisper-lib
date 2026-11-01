@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { BookContent, LibraryBook, WhisperPreview } from '@wisper-lib/shared-types';
-import ortWasmModuleUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs?url';
-import ortWasmUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm?url';
 import { api } from '@/lib/apiClient';
 
 type Envelope<T> = { data: T };
@@ -10,14 +8,24 @@ type ReadLine = { text: string; chapter: string };
 type VoiceGender = 'female' | 'male';
 type ReadingMode = 'preview' | 'book';
 type VoiceEngine = 'neural' | 'device';
-type KokoroModel = import('kokoro-js').KokoroTTS;
-type KokoroAudio = Awaited<ReturnType<KokoroModel['generate']>>;
+type KokoroAudio = { audio: Float32Array; sampling_rate: number };
+type PreparedLineAudio = { token: number; index: number; key: string; audio: Promise<KokoroAudio> };
 
-const KOKORO_MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
-let kokoroPromise: Promise<KokoroModel> | null = null;
+type WorkerReply =
+  | { type: 'progress'; id: number; progress: number }
+  | { type: 'ready'; id: number }
+  | { type: 'audio'; id: number; audio: ArrayBuffer; samplingRate: number }
+  | { type: 'error'; id: number; message: string };
+type PendingWorkerRequest = { resolve: (value?: KokoroAudio) => void; reject: (error: Error) => void };
+
+let kokoroWorker: Worker | null = null;
+let workerRequestId = 0;
+let kokoroPromise: Promise<void> | null = null;
 let kokoroLoaded = false;
 let kokoroProgress = 0;
+let kokoroUnloadTimer: ReturnType<typeof setTimeout> | null = null;
 const kokoroProgressListeners = new Set<(progress: number) => void>();
+const pendingWorkerRequests = new Map<number, PendingWorkerRequest>();
 let sharedAudioContext: AudioContext | null = null;
 const roomImpulseCache = new WeakMap<AudioContext, AudioBuffer>();
 let previewWarmup: { key: string; audio: Promise<KokoroAudio> } | null = null;
@@ -38,33 +46,100 @@ function canWarmVoiceInBackground() {
   return memory >= 4 && cores >= 6 && !connection?.saveData && !/^(slow-)?2g$/i.test(connection?.effectiveType || '');
 }
 
-function loadKokoro(onProgress: (progress: number) => void): Promise<KokoroModel> {
+function keepKokoroWarm() {
+  if (kokoroUnloadTimer) clearTimeout(kokoroUnloadTimer);
+  kokoroUnloadTimer = null;
+}
+
+function releaseKokoroAfterIdle() {
+  keepKokoroWarm();
+  if (!kokoroLoaded || !kokoroWorker) return;
+  kokoroUnloadTimer = setTimeout(() => {
+    kokoroUnloadTimer = null;
+    if (pendingWorkerRequests.size) {
+      releaseKokoroAfterIdle();
+      return;
+    }
+    kokoroWorker?.terminate();
+    kokoroWorker = null;
+    kokoroLoaded = false;
+    kokoroProgress = 0;
+    kokoroPromise = null;
+    previewWarmup = null;
+  }, 120_000);
+}
+
+function getKokoroWorker() {
+  if (!kokoroWorker) {
+    const worker = new Worker(new URL('../workers/kokoro.worker.ts', import.meta.url), { type: 'module' });
+    kokoroWorker = worker;
+    worker.onmessage = event => {
+      const reply = event.data as WorkerReply;
+      if (reply.type === 'progress') {
+        kokoroProgress = reply.progress;
+        kokoroProgressListeners.forEach(listener => listener(kokoroProgress));
+        return;
+      }
+      const pending = pendingWorkerRequests.get(reply.id);
+      if (!pending) return;
+      pendingWorkerRequests.delete(reply.id);
+      if (reply.type === 'error') pending.reject(new Error(reply.message));
+      else if (reply.type === 'ready') pending.resolve();
+      else pending.resolve({ audio: new Float32Array(reply.audio), sampling_rate: reply.samplingRate });
+    };
+    worker.onerror = event => {
+      const error = new Error(event.message || 'The local voice worker stopped unexpectedly.');
+      pendingWorkerRequests.forEach(request => request.reject(error));
+      pendingWorkerRequests.clear();
+      worker.terminate();
+      if (kokoroWorker === worker) kokoroWorker = null;
+      kokoroPromise = null;
+      kokoroLoaded = false;
+      kokoroProgress = 0;
+    };
+  }
+  return kokoroWorker;
+}
+
+function sendKokoroRequest<T = KokoroAudio | undefined>(request: Record<string, unknown>): Promise<T> {
+  const worker = getKokoroWorker();
+  const id = ++workerRequestId;
+  return new Promise<T>((resolve, reject) => {
+    pendingWorkerRequests.set(id, { resolve: value => resolve(value as T), reject });
+    try { worker.postMessage({ ...request, id }); }
+    catch (error) {
+      pendingWorkerRequests.delete(id);
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  });
+}
+
+function loadKokoro(onProgress: (progress: number) => void): Promise<void> {
   kokoroProgressListeners.add(onProgress);
-  if (!kokoroLoaded) onProgress(kokoroProgress);
+  onProgress(kokoroLoaded ? 100 : kokoroProgress);
+  keepKokoroWarm();
   if (!kokoroPromise) {
     kokoroProgress = 0;
-    kokoroPromise = import('kokoro-js').then(({ KokoroTTS, env }) => {
-      env.wasmPaths = { mjs: ortWasmModuleUrl, wasm: ortWasmUrl };
-      return KokoroTTS.from_pretrained(KOKORO_MODEL, {
-        dtype: 'q8',
-        device: 'wasm',
-        progress_callback: info => {
-          if (info.status === 'progress') {
-            kokoroProgress = Math.round(info.progress);
-            kokoroProgressListeners.forEach(listener => listener(kokoroProgress));
-          }
-        },
+    try {
+      kokoroPromise = sendKokoroRequest<void>({ type: 'load' }).then(() => {
+        kokoroLoaded = true;
+        kokoroProgress = 100;
+        releaseKokoroAfterIdle();
+      }).catch(error => {
+        kokoroPromise = null;
+        throw error;
       });
-    }).then(model => {
-      kokoroLoaded = true;
-      kokoroProgress = 100;
-      return model;
-    }).catch(error => {
-      kokoroPromise = null;
-      throw error;
-    });
+    } catch (error) {
+      kokoroProgressListeners.delete(onProgress);
+      return Promise.reject(error);
+    }
   }
   return kokoroPromise.finally(() => kokoroProgressListeners.delete(onProgress));
+}
+
+function generateKokoro(text: string, voice: string, speed: number) {
+  keepKokoroWarm();
+  return sendKokoroRequest<KokoroAudio>({ type: 'generate', text, voice, speed });
 }
 
 const LANGUAGES = [
@@ -187,6 +262,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generation = useRef(0);
   const readingRequested = useRef(false);
+  const preparedAudioRef = useRef<PreparedLineAudio | null>(null);
   const playbackLines = useRef<ReadLine[]>([]);
   const readingMode = useRef<ReadingMode>('preview');
   const nextLine = useRef<(index: number, token: number) => void>(() => {});
@@ -225,10 +301,12 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   const stop = useCallback(() => {
     generation.current += 1;
     readingRequested.current = false;
+    preparedAudioRef.current = null;
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     stopAudio();
+    releaseKokoroAfterIdle();
     setModelProgress(null);
     setPlaying(false);
     setPaused(false);
@@ -247,20 +325,30 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     if (engine === 'neural') {
       void (async () => {
         try {
-          setMessage('Waking the local voice…');
+          setMessage(kokoroLoaded ? 'Finding the next line…' : 'Waking the local voice…');
           if (!kokoroLoaded) setModelProgress(progress => progress ?? 0);
-          const tts = await loadKokoro(progress => {
+          await loadKokoro(progress => {
             if (generation.current === token) setModelProgress(progress);
           });
           if (generation.current !== token) return;
           const voice = gender === 'female' ? 'af_heart' : 'am_onyx';
           const key = voiceCacheKey(line.text, gender, pace);
           const warmedAudio = previewWarmup?.key === key ? previewWarmup.audio : null;
-          const audio = warmedAudio
-            ? await warmedAudio
-            : await tts.generate(line.text, { voice, speed: pace });
+          const prepared = preparedAudioRef.current;
+          const matchesPrepared = prepared?.token === token && prepared.index === index && prepared.key === key;
+          let audio: KokoroAudio;
+          if (warmedAudio) audio = await warmedAudio;
+          else if (matchesPrepared && prepared) {
+            preparedAudioRef.current = null;
+            try { audio = await prepared.audio; }
+            catch {
+              if (generation.current !== token) return;
+              audio = await generateKokoro(line.text, voice, pace);
+            }
+          } else audio = await generateKokoro(line.text, voice, pace);
           if (generation.current !== token) return;
           if (previewWarmup?.key === key) previewWarmup = null;
+          if (prepared?.token === token && prepared.index === index) preparedAudioRef.current = null;
           const context = audioContextRef.current || sharedAudioContext || new AudioContext();
           sharedAudioContext = context;
           audioContextRef.current = context;
@@ -279,6 +367,18 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
           setModelProgress(null);
           setActiveLine(index);
           setMessage('The local whisper is reading.');
+          keepKokoroWarm();
+          const nextLineIndex = index + 1;
+          if (nextLineIndex < lines.length && canWarmVoiceInBackground()) {
+            const nextText = lines[nextLineIndex].text;
+            const nextKey = voiceCacheKey(nextText, gender, pace);
+            const nextAudio = generateKokoro(nextText, voice, pace);
+            const preparedNext: PreparedLineAudio = { token, index: nextLineIndex, key: nextKey, audio: nextAudio };
+            preparedAudioRef.current = preparedNext;
+            void nextAudio.catch(() => {
+              if (preparedAudioRef.current === preparedNext) preparedAudioRef.current = null;
+            });
+          }
           playNeuralBuffer(buffer, 0, index, token, lines);
         } catch (error) {
           if (generation.current !== token) return;
@@ -315,6 +415,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
         setPlaying(false);
         setPaused(false);
         setMessage(readingMode.current === 'book' ? 'You’ve reached the end of this book.' : 'That was the preview.');
+        releaseKokoroAfterIdle();
         return;
       }
       const pause = /[.!?。！？]$/.test(line.text) ? 300 : 165;
@@ -383,6 +484,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
         setPlaying(false);
         setPaused(false);
         setMessage(readingMode.current === 'book' ? 'You’ve reached the end of this book.' : 'That was the preview.');
+        releaseKokoroAfterIdle();
         return;
       }
       const pause = /[.!?。！？]$/.test(lines[index].text) ? 270 : 135;
@@ -391,6 +493,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     setPlaying(true);
     setPaused(false);
     setActiveLine(index);
+    keepKokoroWarm();
     source.start(0, offset);
   }
 
@@ -469,9 +572,16 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
       const audio = loadKokoro(progress => {
         if (!cancelled) setModelProgress(progress);
       })
-        .then(tts => tts.generate(firstLine, { voice, speed: pace }))
+        .then(() => {
+          if (cancelled) {
+            releaseKokoroAfterIdle();
+            throw new Error('Voice preparation cancelled.');
+          }
+          return generateKokoro(firstLine, voice, pace);
+        })
         .then(generated => {
           if (!cancelled) setModelProgress(null);
+          releaseKokoroAfterIdle();
           return generated;
         });
       previewWarmup = { key, audio };
@@ -544,6 +654,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
           source.onended = null;
           try { source.stop(); } catch { /* It may already have ended. */ }
         }
+        releaseKokoroAfterIdle();
       } else if ('speechSynthesis' in window) window.speechSynthesis.pause();
       setPlaying(false); setPaused(true); return;
     }
