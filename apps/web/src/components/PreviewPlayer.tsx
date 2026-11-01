@@ -12,21 +12,35 @@ type KokoroModel = import('kokoro-js').KokoroTTS;
 
 const KOKORO_MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
 let kokoroPromise: Promise<KokoroModel> | null = null;
+let kokoroLoaded = false;
+let kokoroProgress = 0;
+const kokoroProgressListeners = new Set<(progress: number) => void>();
+let sharedAudioContext: AudioContext | null = null;
 
 function loadKokoro(onProgress: (progress: number) => void): Promise<KokoroModel> {
+  kokoroProgressListeners.add(onProgress);
+  onProgress(kokoroLoaded ? 100 : kokoroProgress);
   if (!kokoroPromise) {
+    kokoroProgress = 0;
     kokoroPromise = import('kokoro-js').then(({ KokoroTTS }) => KokoroTTS.from_pretrained(KOKORO_MODEL, {
       dtype: 'q8',
       device: 'wasm',
       progress_callback: info => {
-        if (info.status === 'progress') onProgress(Math.round(info.progress));
+        if (info.status === 'progress') {
+          kokoroProgress = Math.round(info.progress);
+          kokoroProgressListeners.forEach(listener => listener(kokoroProgress));
+        }
       },
-    })).catch(error => {
+    })).then(model => {
+      kokoroLoaded = true;
+      kokoroProgress = 100;
+      return model;
+    }).catch(error => {
       kokoroPromise = null;
       throw error;
     });
   }
-  return kokoroPromise;
+  return kokoroPromise.finally(() => kokoroProgressListeners.delete(onProgress));
 }
 
 const LANGUAGES = [
@@ -187,9 +201,17 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
           if (generation.current !== token) return;
           const audio = await tts.generate(line.text, { voice: gender === 'female' ? 'af_heart' : 'am_onyx', speed: pace });
           if (generation.current !== token) return;
-          const context = audioContextRef.current || new AudioContext();
+          const context = audioContextRef.current || sharedAudioContext || new AudioContext();
+          sharedAudioContext = context;
           audioContextRef.current = context;
-          if (context.state === 'suspended') await context.resume();
+          if (context.state === 'suspended') {
+            try { await context.resume(); } catch { /* A fresh user gesture may be required. */ }
+          }
+          if (context.state !== 'running') {
+            setModelProgress(null);
+            setMessage('Tap Listen once to enable audio on this browser.');
+            return;
+          }
           const buffer = context.createBuffer(1, audio.audio.length, audio.sampling_rate);
           buffer.getChannelData(0).set(audio.audio);
           bufferRef.current = buffer;
@@ -308,6 +330,24 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
   }, []);
 
   useEffect(() => {
+    if (engine !== 'neural' || typeof AudioContext === 'undefined') return;
+    const unlockAudio = () => {
+      try {
+        const context = audioContextRef.current || sharedAudioContext || new AudioContext();
+        sharedAudioContext = context;
+        audioContextRef.current = context;
+        if (context.state === 'suspended') void context.resume().catch(() => {});
+      } catch { /* Unsupported devices can still use an installed speech voice. */ }
+    };
+    document.addEventListener('pointerdown', unlockAudio, { capture: true, passive: true });
+    document.addEventListener('keydown', unlockAudio, true);
+    return () => {
+      document.removeEventListener('pointerdown', unlockAudio, true);
+      document.removeEventListener('keydown', unlockAudio, true);
+    };
+  }, [engine]);
+
+  useEffect(() => {
     try {
       localStorage.setItem('whisper-auto-preview', String(automatic));
       localStorage.setItem('whisper-voice-gender', gender);
@@ -327,11 +367,7 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     if (engine === 'neural' && language !== 'en-US') setLanguage('en-US');
   }, [engine, language]);
 
-  useEffect(() => () => {
-    stop();
-    void audioContextRef.current?.close();
-    audioContextRef.current = null;
-  }, [stop]);
+  useEffect(() => stop, [stop]);
 
   useEffect(() => {
     if (mode !== 'preview' || playing || paused) return;
@@ -434,7 +470,9 @@ export default function PreviewPlayer({ book }: { book: LibraryBook }) {
     </div>
     <div className="lyrics-actions">
       <button type="button" className="button button-quiet read-whole-book" onClick={() => { stop(); setMode('book'); setVisibleLines([]); setActiveLine(0); setMessage(fullBook.isPending ? 'Opening the full text…' : 'Preparing the full book…'); setFullBookRequest(value => value + 1); }} disabled={fullBookRequest > 0 && fullBook.isFetching}>{fullBookRequest > 0 && fullBook.isFetching ? 'Opening full book…' : mode === 'book' && playing ? 'Reading full book' : 'Read full book'}</button>
-      {message && <span role="status">{modelProgress !== null ? `Preparing local voice · ${modelProgress}%` : message}</span>}
+      {modelProgress !== null
+        ? <div className="voice-load-status" role="status" aria-live="polite"><span>Preparing local voice</span><progress max="100" value={modelProgress} aria-label="Local voice download progress" /><span>{modelProgress}%</span></div>
+        : message && <span role="status">{message}</span>}
     </div>
     {fetchError && <p className="inline-message" role="status">{fetchMessage}<button type="button" className="button button-quiet" onClick={() => { void preview.refetch(); if (fullBookRequest) void fullBook.refetch(); }}>Retry</button></p>}
   </section>;

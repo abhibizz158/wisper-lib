@@ -4,7 +4,7 @@ import path from 'path';
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  // Browser requests stay same-origin; only Vite connects to the local API.
+  // App/API traffic stays same-origin; the neural voice downloads model assets directly from Hugging Face.
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
   const apiBase = env.API_PROXY_TARGET || 'http://127.0.0.1:3001';
 
@@ -38,7 +38,7 @@ export default defineConfig(({ mode }) => {
       // its model once and run its WebAssembly workers in the browser.
       headers: {
         'Content-Security-Policy':
-          "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss: https://huggingface.co https://*.huggingface.co https://cdn.jsdelivr.net https://*.xethub.hf.co; frame-src 'self' blob:;",
+          "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss: https://huggingface.co https://*.huggingface.co https://hf.co https://*.hf.co https://cdn.jsdelivr.net https://*.xethub.hf.co; frame-src 'self' blob:;",
       },
     },
 
